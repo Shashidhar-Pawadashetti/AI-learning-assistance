@@ -4,6 +4,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import User from './models/User.js';
 
 dotenv.config();
@@ -70,6 +71,51 @@ app.post('/api/login', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/chatbot', async (req, res) => {
+  try {
+    const { message, notes } = req.body;
+    
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const prompt = notes ? `Based on these notes: ${notes}\n\nAnswer this question: ${message}` : message;
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    
+    res.json({ reply: text });
+  } catch (error) {
+    console.error('Chatbot error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get response from chatbot' });
+  }
+});
+
+app.post('/api/generate-quiz', async (req, res) => {
+  try {
+    const { notes } = req.body;
+    
+    if (!notes) {
+      return res.status(400).json({ error: 'Notes are required' });
+    }
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const prompt = `Based on the following notes, generate exactly 5 quiz questions in JSON format. Include 3 multiple choice questions and 2 fill-in-the-blank questions. Return ONLY valid JSON array without any markdown formatting or explanation.\n\nNotes: ${notes}\n\nFormat: [{"type":"mcq","q":"question text","options":["A","B","C","D"],"a":"correct answer"},{"type":"blank","q":"question with ____ blank","a":"answer"}]`;
+    
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const jsonText = text.replace(/```json\n?|```\n?/g, '').trim();
+    const questions = JSON.parse(jsonText);
+    
+    res.json({ questions });
+  } catch (error) {
+    console.error('Quiz generation error:', error);
+    res.status(500).json({ error: 'Failed to generate quiz' });
   }
 });
 
