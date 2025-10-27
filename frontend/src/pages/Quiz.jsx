@@ -1,59 +1,33 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 
 export default function Quiz() {
   const [questions, setQuestions] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const notes = localStorage.getItem("studentNotes");
-    if (notes) {
-      const sentences = notes
-        .split(/[.?!]/)
-        .map((s) => s.trim())
-        .filter((s) => s.length > 8);
-
-      const fillBlanks = sentences.slice(0, 3).map((s) => {
-        const words = s.split(" ");
-        if (words.length > 4) {
-          const randomIndex = Math.floor(Math.random() * words.length);
-          const answer = words[randomIndex];
-          words[randomIndex] = "____";
-          return {
-            type: "blank",
-            q: words.join(" "),
-            a: answer,
-          };
+    const fetchQuiz = async () => {
+      const notes = localStorage.getItem("studentNotes");
+      if (notes) {
+        try {
+          const { data } = await axios.post('http://localhost:5000/api/generate-quiz', { notes });
+          setQuestions(data.questions);
+        } catch (error) {
+          console.error('Error generating quiz:', error);
+          alert('Failed to generate quiz. Please try again.');
         }
-        return { type: "blank", q: s, a: "N/A" };
-      });
-
-      const mcqs = [
-        {
-          type: "mcq",
-          q: "What does AI stand for?",
-          options: [
-            "Artificial Intelligence",
-            "Automatic Input",
-            "Advanced Innovation",
-            "Applied Informatics",
-          ],
-          a: "Artificial Intelligence",
-        },
-        {
-          type: "mcq",
-          q: "Who is considered the father of AI?",
-          options: ["Alan Turing", "Elon Musk", "Einstein", "Newton"],
-          a: "Alan Turing",
-        },
-      ];
-
-      setQuestions([...fillBlanks, ...mcqs]);
-    }
+      }
+      setLoading(false);
+    };
+    fetchQuiz();
   }, []);
 
   return (
     <div className="quiz-card">
       <h2>Quiz Time 🎯</h2>
-      {questions.length === 0 ? (
+      {loading ? (
+        <p>Generating quiz from your notes...</p>
+      ) : questions.length === 0 ? (
         <p>No notes uploaded yet. Please go back and upload notes first.</p>
       ) : (
         questions.map((item, idx) => (
@@ -71,13 +45,14 @@ export default function Quiz() {
             )}
 
             {item.type === "mcq" && (
-              <ul>
+              <div>
                 {item.options.map((opt, i) => (
-                  <li key={i} className="option">
-                    {opt}
-                  </li>
+                  <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
+                    <span>{String.fromCharCode(97 + i)}.</span>
+                    <div className="option" style={{ flex: 1 }}>{opt}</div>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
           </div>
         ))
