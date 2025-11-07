@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import API_BASE_URL from "../config";
+import ProgressCharts from "../components/ProgressCharts";
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
@@ -29,7 +30,7 @@ export default function Dashboard() {
       setStats(statsData.stats);
 
       // Fetch recent quiz history
-      const historyRes = await fetch(`${API_BASE_URL}/quiz-history/${userId}?limit=5`);
+      const historyRes = await fetch(`${API_BASE_URL}/quiz-history/${userId}?limit=10`);
       const historyData = await historyRes.json();
       setRecentQuizzes(historyData.history || []);
     } catch (err) {
@@ -108,6 +109,9 @@ export default function Dashboard() {
               </div>
             </div>
           )}
+
+          {/* Progress Charts */}
+          <ProgressCharts quizHistory={recentQuizzes} />
 
           {recentQuizzes.length > 0 && (
             <div className="recent-quizzes" style={{ marginTop: '30px' }}>
