@@ -11,6 +11,9 @@ export default function Quiz() {
   const [timeRemaining, setTimeRemaining] = useState(null);
   const [timerActive, setTimerActive] = useState(false);
 
+  // Constants
+  const AUTO_SUBMIT_DELAY_MS = 100;
+
   useEffect(() => {
     const notes = localStorage.getItem("studentNotes");
     if (!notes) return;
@@ -156,7 +159,7 @@ export default function Quiz() {
           clearInterval(timer);
           setTimerActive(false);
           // Auto-submit when time runs out
-          setTimeout(() => handleSubmit(), 100);
+          setTimeout(() => handleSubmit(), AUTO_SUBMIT_DELAY_MS);
           return 0;
         }
         return prev - 1;

@@ -45,7 +45,7 @@ export default function ProgressCharts({ quizHistory }) {
 
   const labels = sortedQuizzes.map((quiz, idx) => `Quiz ${idx + 1}`);
   const scorePercentages = sortedQuizzes.map(quiz => 
-    (quiz.score / quiz.totalQuestions) * 100
+    quiz.totalQuestions > 0 ? (quiz.score / quiz.totalQuestions) * 100 : 0
   );
   const xpEarned = sortedQuizzes.map(quiz => quiz.xpEarned);
 
