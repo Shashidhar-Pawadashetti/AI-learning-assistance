@@ -13,6 +13,11 @@ dotenv.config();
 
 const app = express();
 
+// TODO: Add rate limiting before production deployment
+// Example: import rateLimit from 'express-rate-limit';
+// const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+// app.use('/api/', apiLimiter);
+
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));

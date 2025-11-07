@@ -102,6 +102,16 @@ npm run dev
 
 The app will be available at `http://localhost:5173`
 
+## 🔒 Security
+
+Before deploying to production, please review [SECURITY.md](SECURITY.md) for important security recommendations including:
+- Rate limiting implementation
+- CORS configuration
+- Firebase token verification
+- Security headers with Helmet.js
+
+The current implementation is secure for development but requires hardening for production deployment.
+
 ## 📚 API Endpoints
 
 ### User Management
