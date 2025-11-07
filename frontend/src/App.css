@@ -478,3 +478,252 @@ body {
   font-weight: bold;
   text-decoration: none;
 }
+
+/* ========== Mobile Responsiveness ========== */
+
+/* Tablet and below (max-width: 768px) */
+@media (max-width: 768px) {
+  /* Navbar adjustments */
+  .navbar {
+    padding: 12px 20px;
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .logo {
+    font-size: 20px;
+  }
+
+  .nav-links {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .nav-links a {
+    margin-left: 10px;
+    margin-right: 10px;
+    font-size: 14px;
+  }
+
+  /* Hero section */
+  .hero {
+    padding: 60px 20px;
+    margin: 20px auto;
+  }
+
+  .hero h1 {
+    font-size: 32px;
+  }
+
+  .hero p {
+    font-size: 16px;
+  }
+
+  /* Container */
+  .container {
+    width: 95%;
+  }
+
+  /* Cards - full width on mobile */
+  .quiz-card, .upload-card, .dashboard, .achievements-card, .leaderboard-card, .notes-library-card {
+    width: 100%;
+    padding: 20px;
+    margin: 15px auto;
+  }
+
+  /* Dashboard grid adjustments */
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .profile-card {
+    padding: 20px;
+  }
+
+  /* Badge list */
+  .badge-list {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+
+  /* Buttons */
+  .btn {
+    padding: 10px 20px;
+    font-size: 14px;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  /* Form inputs */
+  .file-input, .input-field {
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  /* Quiz questions */
+  .question {
+    padding: 15px;
+  }
+
+  .option {
+    padding: 10px 15px;
+    font-size: 14px;
+  }
+
+  /* Leaderboard */
+  .leaderboard-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .rank {
+    width: 40px !important;
+    height: 40px !important;
+    font-size: 16px !important;
+  }
+
+  /* Progress charts */
+  .progress-chart {
+    padding: 15px;
+  }
+
+  /* Recent quizzes list */
+  .recent-quizzes > div > div {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px;
+  }
+}
+
+/* Mobile phones (max-width: 480px) */
+@media (max-width: 480px) {
+  .navbar {
+    padding: 10px 15px;
+  }
+
+  .logo {
+    font-size: 18px;
+  }
+
+  .nav-links a {
+    font-size: 13px;
+    margin: 5px;
+  }
+
+  .hero {
+    padding: 40px 15px;
+    margin: 15px 10px;
+    border-radius: 15px;
+  }
+
+  .hero h1 {
+    font-size: 24px;
+  }
+
+  .hero p {
+    font-size: 14px;
+  }
+
+  /* Cards */
+  .quiz-card, .upload-card, .dashboard, .achievements-card, .leaderboard-card, .notes-library-card {
+    padding: 15px;
+    margin: 10px auto;
+    border-radius: 15px;
+  }
+
+  /* Typography */
+  h2 {
+    font-size: 22px;
+  }
+
+  h3 {
+    font-size: 18px;
+  }
+
+  /* Stats cards */
+  .stat-card {
+    padding: 15px !important;
+  }
+
+  .stat-card p:first-child {
+    font-size: 24px !important;
+  }
+
+  /* Badge list */
+  .badge-list {
+    grid-template-columns: 1fr;
+  }
+
+  .badge {
+    font-size: 14px;
+  }
+
+  /* Form elements */
+  textarea {
+    font-size: 14px;
+  }
+
+  /* Leaderboard specific */
+  .leaderboard-item {
+    padding: 12px;
+  }
+
+  .user-info h4 {
+    font-size: 16px;
+  }
+
+  .user-info p {
+    font-size: 12px;
+  }
+
+  /* Notes library */
+  .note-card {
+    padding: 12px;
+  }
+}
+
+/* Landscape phone optimization */
+@media (max-height: 500px) and (orientation: landscape) {
+  .hero {
+    padding: 30px 20px;
+  }
+
+  .navbar {
+    position: relative;
+  }
+}
+
+/* Touch-friendly adjustments */
+@media (hover: none) and (pointer: coarse) {
+  /* Increase touch targets */
+  .btn {
+    min-height: 44px;
+    padding: 12px 20px;
+  }
+
+  .option {
+    min-height: 44px;
+    padding: 12px 15px;
+  }
+
+  .nav-links a {
+    padding: 8px 12px;
+    margin: 5px;
+  }
+
+  /* Disable hover effects on touch devices */
+  .btn:hover,
+  .option:hover {
+    transform: none;
+  }
+
+  /* But keep active state for feedback */
+  .btn:active {
+    transform: scale(0.98);
+  }
+
+  .option:active {
+    transform: scale(0.98);
+  }
+}
