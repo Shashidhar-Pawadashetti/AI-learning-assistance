@@ -50,26 +50,6 @@ export default function Quiz() {
     fetchQuiz();
   }, []);
 
-  // Timer countdown effect
-  useEffect(() => {
-    if (!timerActive || timeRemaining === null || score !== null) return;
-
-    const timer = setInterval(() => {
-      setTimeRemaining(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setTimerActive(false);
-          // Auto-submit when time runs out
-          setTimeout(() => handleSubmit(), 100);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [timerActive, timeRemaining, score, handleSubmit]);
-
   const setAnswer = (idx, value) => {
     setAnswers(prev => ({ ...prev, [idx]: value }));
   };
@@ -165,6 +145,26 @@ export default function Quiz() {
     stats.totalQuestions = questions.length;
     localStorage.setItem('stats', JSON.stringify(stats));
   }, [timerActive, questions, answers]);
+
+  // Timer countdown effect
+  useEffect(() => {
+    if (!timerActive || timeRemaining === null || score !== null) return;
+
+    const timer = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setTimerActive(false);
+          // Auto-submit when time runs out
+          setTimeout(() => handleSubmit(), 100);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timerActive, timeRemaining, score, handleSubmit]);
 
   return (
     <div className="quiz-card">
