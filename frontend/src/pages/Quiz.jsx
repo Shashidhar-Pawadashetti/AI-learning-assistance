@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import API_BASE_URL from "../config";
 
 export default function Quiz() {
@@ -8,10 +8,21 @@ export default function Quiz() {
   const [error, setError] = useState("");
   const [score, setScore] = useState(null);
   const [showReview, setShowReview] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(null);
+  const [timerActive, setTimerActive] = useState(false);
 
   useEffect(() => {
     const notes = localStorage.getItem("studentNotes");
     if (!notes) return;
+
+    const difficulty = localStorage.getItem("quizDifficulty") || "medium";
+    const timerConfig = JSON.parse(localStorage.getItem("quizTimer") || '{"enabled": false, "duration": 10}');
+
+    // Initialize timer if enabled
+    if (timerConfig.enabled) {
+      setTimeRemaining(timerConfig.duration * 60); // Convert to seconds
+      setTimerActive(true);
+    }
 
     const fetchQuiz = async () => {
       setLoading(true);
@@ -20,7 +31,7 @@ export default function Quiz() {
         const res = await fetch(`${API_BASE_URL}/generate-quiz`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ notes, level: "medium" })
+          body: JSON.stringify({ notes, level: difficulty })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to generate quiz");
@@ -39,13 +50,45 @@ export default function Quiz() {
     fetchQuiz();
   }, []);
 
+  // Timer countdown effect
+  useEffect(() => {
+    if (!timerActive || timeRemaining === null || score !== null) return;
+
+    const timer = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setTimerActive(false);
+          // Auto-submit when time runs out
+          setTimeout(() => handleSubmit(), 100);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timerActive, timeRemaining, score, handleSubmit]);
+
   const setAnswer = (idx, value) => {
     setAnswers(prev => ({ ...prev, [idx]: value }));
   };
 
-  const handleSubmit = async () => {
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleSubmit = useCallback(async () => {
+    // Stop timer if active
+    if (timerActive) {
+      setTimerActive(false);
+    }
+
     let correct = 0;
     const detailedQuestions = [];
+    const difficulty = localStorage.getItem("quizDifficulty") || "medium";
     
     questions.forEach((q, i) => {
       const v = answers[i];
@@ -100,7 +143,7 @@ export default function Quiz() {
             score: correct,
             totalQuestions: questions.length,
             xpEarned: gained,
-            difficulty: 'medium'
+            difficulty: difficulty
           })
         });
 
@@ -121,11 +164,32 @@ export default function Quiz() {
     stats.lastScore = correct;
     stats.totalQuestions = questions.length;
     localStorage.setItem('stats', JSON.stringify(stats));
-  };
+  }, [timerActive, questions, answers]);
 
   return (
     <div className="quiz-card">
       <h2>Quiz Time 🎯</h2>
+      
+      {timerActive && timeRemaining !== null && (
+        <div style={{
+          position: 'sticky',
+          top: '10px',
+          background: timeRemaining < 60 ? '#ff6b6b' : '#4CAF50',
+          color: 'white',
+          padding: '12px 20px',
+          borderRadius: '8px',
+          marginBottom: '15px',
+          textAlign: 'center',
+          fontSize: '18px',
+          fontWeight: 'bold',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+          zIndex: 10
+        }}>
+          ⏱️ Time Remaining: {formatTime(timeRemaining)}
+          {timeRemaining < 60 && <div style={{ fontSize: '14px', marginTop: '4px' }}>Hurry up!</div>}
+        </div>
+      )}
+
       {loading && <p>Generating quiz…</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {!loading && questions.length === 0 ? (
@@ -144,6 +208,7 @@ export default function Quiz() {
                 placeholder="Your answer..."
                 value={answers[idx] || ""}
                 onChange={(e) => setAnswer(idx, e.target.value)}
+                disabled={score !== null}
               />
             )}
 
@@ -151,7 +216,7 @@ export default function Quiz() {
               <ul>
                 {item.options.map((opt, i) => (
                   <li key={i} className={`option ${answers[idx] === opt ? 'selected' : ''}`}
-                    onClick={() => setAnswer(idx, opt)}>
+                    onClick={() => score === null && setAnswer(idx, opt)}>
                     {opt}
                   </li>
                 ))}
@@ -160,7 +225,9 @@ export default function Quiz() {
           </div>
         ))
       )}
-      <button className="btn success" onClick={handleSubmit}>Submit</button>
+      {score === null && questions.length > 0 && (
+        <button className="btn success" onClick={handleSubmit}>Submit</button>
+      )}
       {score !== null && (
         <div style={{ marginTop: 12 }}>
           <p>You scored {score} / {questions.length}</p>

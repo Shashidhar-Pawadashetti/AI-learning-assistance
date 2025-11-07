@@ -7,6 +7,9 @@ export default function UploadNotes() {
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("General");
   const [saveNote, setSaveNote] = useState(false);
+  const [difficulty, setDifficulty] = useState("medium");
+  const [enableTimer, setEnableTimer] = useState(false);
+  const [timerDuration, setTimerDuration] = useState(10);
   const navigate = useNavigate();
 
   const handleFileUpload = (e) => {
@@ -30,6 +33,8 @@ export default function UploadNotes() {
     }
     
     localStorage.setItem("studentNotes", notes);
+    localStorage.setItem("quizDifficulty", difficulty);
+    localStorage.setItem("quizTimer", JSON.stringify({ enabled: enableTimer, duration: timerDuration }));
 
     // Save note to backend if user wants to
     if (saveNote && title) {
@@ -102,6 +107,54 @@ export default function UploadNotes() {
           />
           <span>Save this note to my library</span>
         </label>
+      </div>
+
+      <div style={{ marginTop: '15px', marginBottom: '15px', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+        <h3 style={{ marginBottom: '10px', fontSize: '16px' }}>Quiz Settings</h3>
+        
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>
+            Difficulty Level:
+          </label>
+          <select 
+            value={difficulty} 
+            onChange={(e) => setDifficulty(e.target.value)}
+            className="file-input"
+            style={{ padding: '8px' }}
+          >
+            <option value="easy">Easy - Basic concepts and simple questions</option>
+            <option value="medium">Medium - Moderate complexity</option>
+            <option value="hard">Hard - Advanced and challenging questions</option>
+          </select>
+        </div>
+
+        <div style={{ marginBottom: '10px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={enableTimer}
+              onChange={(e) => setEnableTimer(e.target.checked)}
+            />
+            <span style={{ fontWeight: '500' }}>Enable Timer (Challenge Mode)</span>
+          </label>
+        </div>
+
+        {enableTimer && (
+          <div style={{ marginLeft: '25px', marginTop: '8px' }}>
+            <label style={{ display: 'block', marginBottom: '5px' }}>
+              Timer Duration (minutes):
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="60"
+              value={timerDuration}
+              onChange={(e) => setTimerDuration(parseInt(e.target.value) || 10)}
+              className="file-input"
+              style={{ width: '100px', padding: '5px' }}
+            />
+          </div>
+        )}
       </div>
 
       <button className="btn" onClick={handleSubmit}>
