@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword, updateProfile, signInWithPopup, fetchSignInMethodsForEmail, getAdditionalUserInfo, signOut } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
 
@@ -8,7 +7,6 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const navigate = useNavigate();
 
   const handleSignup = async (e) => {
     e.preventDefault();
@@ -146,7 +144,7 @@ export default function Signup() {
             } else {
               setError('An account already exists with the same email using a different sign-in method.');
             }
-          } catch (_) {
+          } catch {
             setError('An account already exists with the same email using a different sign-in method.');
           }
         } else {
