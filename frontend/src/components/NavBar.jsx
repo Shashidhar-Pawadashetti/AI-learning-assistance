@@ -1,5 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { signOut } from "firebase/auth";
+import { auth } from "../firebase";
 
 export default function Navbar() {
   const [dark, setDark] = useState(false);
@@ -19,11 +21,16 @@ export default function Navbar() {
     setIsLoggedIn(!!token);
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setIsLoggedIn(false);
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      setIsLoggedIn(false);
+      navigate('/');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
   };
 
   return (
@@ -36,7 +43,7 @@ export default function Navbar() {
         <Link to="/achievements">Achievements</Link>
         <Link to="/dashboard">Dashboard</Link>
         {isLoggedIn ? (
-          <a onClick={handleLogout} style={{marginLeft: '25px', cursor: 'pointer'}}>Logout</a>
+          <a onClick={handleLogout} style={{ marginLeft: '25px', cursor: 'pointer' }}>Logout</a>
         ) : (
           <>
             <Link to="/Login">Login</Link>

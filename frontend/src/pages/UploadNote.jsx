@@ -9,15 +9,13 @@ export default function UploadNotes() {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (file.type === "text/plain") {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setNotes(event.target.result);
-      };
-      reader.readAsText(file);
-    } else {
-      alert("Only .txt files are supported in this demo.");
-    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setNotes(event.target.result);
+    };
+
+    // Read all text-based files
+    reader.readAsText(file);
   };
 
   const handleSubmit = () => {
@@ -32,7 +30,7 @@ export default function UploadNotes() {
   return (
     <div className="upload-card">
       <h2>Upload Your Notes</h2>
-      <p>Paste your study notes or upload a file to generate a quiz.</p>
+      <p>Paste your study notes or upload a file (supports .txt, .md, .pdf, .doc, code files, etc.).</p>
 
       <textarea
         className="file-input"
@@ -44,7 +42,7 @@ export default function UploadNotes() {
 
       <input
         type="file"
-        accept=".txt"
+        accept=".txt,.md,.pdf,.doc,.docx,.html,.js,.jsx,.py,.java,.cpp,.c,.json,.xml,.csv"
         className="file-input"
         onChange={handleFileUpload}
       />
