@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import API_BASE_URL from "../config";
 
 export default function Quiz() {
   const [questions, setQuestions] = useState([]);
@@ -16,7 +17,7 @@ export default function Quiz() {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch("http://localhost:5000/api/generate-quiz", {
+        const res = await fetch(`${API_BASE_URL}/generate-quiz`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ notes, level: "medium" })
@@ -90,7 +91,7 @@ export default function Quiz() {
       // Save to backend
       try {
         // Save quiz attempt
-        await fetch('http://localhost:5000/api/quiz-attempt', {
+        await fetch(`${API_BASE_URL}/quiz-attempt`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -104,7 +105,7 @@ export default function Quiz() {
         });
 
         // Update user XP and level
-        await fetch(`http://localhost:5000/api/firebase-user/${user.id}`, {
+        await fetch(`${API_BASE_URL}/firebase-user/${user.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ xp, level })

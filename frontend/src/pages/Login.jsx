@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
+import API_BASE_URL from "../config";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -19,7 +20,7 @@ export default function Login() {
       const token = await user.getIdToken();
 
       // Sync with backend to get/create user profile
-      const response = await fetch('http://localhost:5000/api/firebase-user', {
+      const response = await fetch(`${API_BASE_URL}/firebase-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -65,7 +66,7 @@ export default function Login() {
       const token = await user.getIdToken();
 
       // Sync with backend
-      const response = await fetch('http://localhost:5000/api/firebase-user', {
+      const response = await fetch(`${API_BASE_URL}/firebase-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

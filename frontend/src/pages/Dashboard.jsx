@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import API_BASE_URL from "../config";
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
@@ -23,12 +24,12 @@ export default function Dashboard() {
   const fetchDashboardData = async (userId) => {
     try {
       // Fetch stats
-      const statsRes = await fetch(`http://localhost:5000/api/quiz-stats/${userId}`);
+      const statsRes = await fetch(`${API_BASE_URL}/quiz-stats/${userId}`);
       const statsData = await statsRes.json();
       setStats(statsData.stats);
 
       // Fetch recent quiz history
-      const historyRes = await fetch(`http://localhost:5000/api/quiz-history/${userId}?limit=5`);
+      const historyRes = await fetch(`${API_BASE_URL}/quiz-history/${userId}?limit=5`);
       const historyData = await historyRes.json();
       setRecentQuizzes(historyData.history || []);
     } catch (err) {

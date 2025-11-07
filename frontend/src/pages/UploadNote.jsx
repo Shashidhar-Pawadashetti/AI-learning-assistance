@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import API_BASE_URL from "../config";
 
 export default function UploadNotes() {
   const [notes, setNotes] = useState("");
@@ -35,7 +36,7 @@ export default function UploadNotes() {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       if (user.id) {
         try {
-          await fetch('http://localhost:5000/api/notes', {
+          await fetch(`${API_BASE_URL}/notes`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

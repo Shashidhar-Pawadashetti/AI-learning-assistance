@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createUserWithEmailAndPassword, updateProfile, signInWithPopup, fetchSignInMethodsForEmail, getAdditionalUserInfo, signOut } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
+import API_BASE_URL from "../config";
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -26,7 +27,7 @@ export default function Signup() {
       const token = await user.getIdToken();
 
       // Sync with backend
-      const response = await fetch('http://localhost:5000/api/firebase-user', {
+      const response = await fetch(`${API_BASE_URL}/firebase-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -103,7 +104,7 @@ export default function Signup() {
       const token = await user.getIdToken();
 
       // Sync with backend
-      const response = await fetch('http://localhost:5000/api/firebase-user', {
+      const response = await fetch(`${API_BASE_URL}/firebase-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -144,7 +145,8 @@ export default function Signup() {
             } else {
               setError('An account already exists with the same email using a different sign-in method.');
             }
-          } catch {
+          } catch (error) {
+            console.error('Error fetching sign-in methods:', error);
             setError('An account already exists with the same email using a different sign-in method.');
           }
         } else {

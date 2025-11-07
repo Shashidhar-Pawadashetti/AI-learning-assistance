@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import API_BASE_URL from "../config";
 
 export default function NotesLibrary() {
   const [notes, setNotes] = useState([]);
@@ -16,7 +17,7 @@ export default function NotesLibrary() {
       }
 
       try {
-        const response = await fetch(`http://localhost:5000/api/notes/${user.id}`);
+        const response = await fetch(`${API_BASE_URL}/notes/${user.id}`);
         const data = await response.json();
         
         if (!response.ok) throw new Error(data.error || 'Failed to fetch notes');
@@ -34,7 +35,7 @@ export default function NotesLibrary() {
 
   const handleUseNote = async (noteId) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/note/${noteId}`);
+      const response = await fetch(`${API_BASE_URL}/note/${noteId}`);
       const data = await response.json();
       
       if (!response.ok) throw new Error(data.error || 'Failed to fetch note');
@@ -50,7 +51,7 @@ export default function NotesLibrary() {
     if (!window.confirm('Are you sure you want to delete this note?')) return;
 
     try {
-      const response = await fetch(`http://localhost:5000/api/note/${noteId}`, {
+      const response = await fetch(`${API_BASE_URL}/note/${noteId}`, {
         method: 'DELETE'
       });
       

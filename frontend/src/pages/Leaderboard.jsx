@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import API_BASE_URL from "../config";
 
 export default function Leaderboard() {
   const [leaderboard, setLeaderboard] = useState([]);
@@ -8,7 +9,7 @@ export default function Leaderboard() {
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/leaderboard?limit=20');
+        const response = await fetch(`${API_BASE_URL}/leaderboard?limit=20`);
         const data = await response.json();
         
         if (!response.ok) throw new Error(data.error || 'Failed to fetch leaderboard');

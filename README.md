@@ -78,6 +78,11 @@ cp .env.example .env
 cd frontend
 npm install
 
+# Create .env file (optional - defaults to localhost:5000)
+cp .env.example .env
+# Edit .env if you need to change the API URL:
+# VITE_API_URL=http://localhost:5000/api
+
 # Update firebase.js with your Firebase config
 ```
 
