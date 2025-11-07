@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Navbar from "./components/NavBar";
+import ProtectedRoute from "./components/ProtectedRoute";
 import Home from "./pages/Home";
 import UploadNotes from "./pages/UploadNote";
 import Quiz from "./pages/Quiz";
@@ -7,6 +8,8 @@ import Achievements from "./pages/Achievements";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import Leaderboard from "./pages/Leaderboard";
+import NotesLibrary from "./pages/NotesLibrary";
 
 export default function App() {
   return (
@@ -16,12 +19,14 @@ export default function App() {
         <div className="content">
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/upload" element={<UploadNotes />} />
-            <Route path="/quiz" element={<Quiz />} />
-            <Route path="/achievements" element={<Achievements />} />
-            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />1
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/upload" element={<ProtectedRoute><UploadNotes /></ProtectedRoute>} />
+            <Route path="/quiz" element={<ProtectedRoute><Quiz /></ProtectedRoute>} />
+            <Route path="/achievements" element={<ProtectedRoute><Achievements /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
+            <Route path="/notes" element={<ProtectedRoute><NotesLibrary /></ProtectedRoute>} />
           </Routes>
         </div>
       </div>

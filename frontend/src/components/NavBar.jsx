@@ -41,6 +41,8 @@ export default function Navbar() {
         <Link to="/upload">Upload Notes</Link>
         <Link to="/quiz">Quiz</Link>
         <Link to="/achievements">Achievements</Link>
+        <Link to="/leaderboard">Leaderboard</Link>
+        <Link to="/notes">My Notes</Link>
         <Link to="/dashboard">Dashboard</Link>
         {isLoggedIn ? (
           <a onClick={handleLogout} style={{ marginLeft: '25px', cursor: 'pointer' }}>Logout</a>

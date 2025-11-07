@@ -27,15 +27,29 @@ export default function Signup() {
       // Get Firebase ID token
       const token = await user.getIdToken();
 
-      // Store user info in localStorage
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({
+      // Sync with backend
+      const response = await fetch('http://localhost:5000/api/firebase-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firebaseUid: user.uid,
+          email: user.email,
+          name: name
+        })
+      });
+
+      const data = await response.json();
+      const userData = data.user || {
         id: user.uid,
         name: name,
         email: user.email,
         xp: 0,
         level: 1
-      }));
+      };
+
+      // Store user info in localStorage
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
 
       window.location.href = '/dashboard';
     } catch (err) {
@@ -90,14 +104,28 @@ export default function Signup() {
       }
       const token = await user.getIdToken();
 
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({
+      // Sync with backend
+      const response = await fetch('http://localhost:5000/api/firebase-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firebaseUid: user.uid,
+          email: user.email,
+          name: user.displayName || user.email?.split('@')[0] || 'User'
+        })
+      });
+
+      const data = await response.json();
+      const userData = data.user || {
         id: user.uid,
         name: user.displayName || user.email?.split('@')[0] || 'User',
         email: user.email,
         xp: 0,
         level: 1
-      }));
+      };
+
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
 
       window.location.href = '/dashboard';
     } catch (err) {
