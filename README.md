@@ -6,6 +6,8 @@ A gamified learning platform that transforms your study notes into interactive q
 
 ### Core Learning Features
 - **📝 Upload Notes**: Upload study notes in various formats (.txt, .md, .pdf, .doc, code files)
+- **🎯 Difficulty Selection**: Choose quiz difficulty (Easy, Medium, Hard) to match your skill level
+- **⏱️ Timed Quiz Mode**: Optional countdown timer for challenge mode (1-60 minutes)
 - **🤖 AI-Powered Quiz Generation**: Automatically generate quizzes from your notes using Hugging Face AI
 - **✅ Quiz Review**: Review correct answers after completing quizzes with color-coded feedback
 - **📚 Notes Library**: Save and organize your study materials for reuse
@@ -14,14 +16,16 @@ A gamified learning platform that transforms your study notes into interactive q
 ### Gamification System
 - **⭐ XP & Levels**: Earn experience points for completing quizzes (10 XP per correct answer)
 - **📊 Progress Tracking**: Visual progress bars showing XP needed for next level
+- **📈 Performance Charts**: Interactive graphs showing score progression and XP trends over time
 - **🏅 Achievements**: Unlock badges for milestones (First Quiz, 100 XP, Quiz Master, etc.)
-- **📈 Statistics Dashboard**: View your quiz history, average scores, and performance trends
+- **📉 Statistics Dashboard**: View your quiz history, average scores, and performance trends
 
 ### User Management
 - **🔐 Firebase Authentication**: Secure login with email/password or Google Sign-In
 - **👤 User Profiles**: Personalized dashboard with stats and achievements
 - **🔒 Protected Routes**: Authenticated access to learning features
 - **☁️ Cloud Sync**: User data persisted to MongoDB database
+- **📱 Mobile Responsive**: Optimized for all devices with touch-friendly interface
 
 ## 🛠️ Tech Stack
 
@@ -29,6 +33,7 @@ A gamified learning platform that transforms your study notes into interactive q
 - **React 19** with Vite
 - **React Router v7** for routing
 - **Tailwind CSS v4** for styling
+- **Chart.js** with react-chartjs-2 for data visualization
 - **Firebase SDK** for authentication
 
 ### Backend
@@ -137,18 +142,20 @@ The current implementation is secure for development but requires hardening for 
 
 1. **Sign Up/Login**: Create an account or sign in with Google
 2. **Upload Notes**: Go to "Upload Notes" and paste or upload your study material
-3. **Take Quiz**: AI generates questions automatically from your notes
-4. **Review Answers**: After submitting, review correct answers with explanations
-5. **Track Progress**: Check your dashboard for statistics and XP progress
-6. **Compete**: View the leaderboard to see how you rank against others
-7. **Library**: Save notes to your library for quick access later
+3. **Configure Quiz**: Select difficulty level (Easy/Medium/Hard) and optionally enable timer
+4. **Take Quiz**: AI generates questions automatically from your notes
+5. **Review Answers**: After submitting, review correct answers with color-coded feedback
+6. **Track Progress**: Check your dashboard for statistics, performance charts, and XP progress
+7. **Compete**: View the leaderboard to see how you rank against others
+8. **Library**: Save notes to your library for quick access later
 
 ## 🔮 Future Enhancements
 
-- [ ] Difficulty selection for quizzes (Easy, Medium, Hard)
-- [ ] Timed quizzes with countdown timer
+- [x] ~~Difficulty selection for quizzes (Easy, Medium, Hard)~~ ✅ Implemented
+- [x] ~~Timed quizzes with countdown timer~~ ✅ Implemented
+- [x] ~~Progress analytics with charts~~ ✅ Implemented
+- [x] ~~Mobile responsiveness~~ ✅ Implemented
 - [ ] More question types (True/False, Matching, etc.)
-- [ ] Progress analytics with charts
 - [ ] Study reminders and notifications
 - [ ] Collaborative learning features
 - [ ] Mobile app version
