@@ -1,13 +1,12 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
+import API_BASE_URL from "../config";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -20,15 +19,29 @@ export default function Login() {
       // Get Firebase ID token
       const token = await user.getIdToken();
 
-      // Store user info in localStorage
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({
+      // Sync with backend to get/create user profile
+      const response = await fetch(`${API_BASE_URL}/firebase-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firebaseUid: user.uid,
+          email: user.email,
+          name: user.displayName || user.email.split('@')[0]
+        })
+      });
+
+      const data = await response.json();
+      const userData = data.user || {
         id: user.uid,
         name: user.displayName || user.email.split('@')[0],
         email: user.email,
         xp: 0,
         level: 1
-      }));
+      };
+
+      // Store user info in localStorage
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
 
       window.location.href = '/dashboard';
     } catch (err) {
@@ -52,14 +65,28 @@ export default function Login() {
       const user = result.user;
       const token = await user.getIdToken();
 
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({
+      // Sync with backend
+      const response = await fetch(`${API_BASE_URL}/firebase-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firebaseUid: user.uid,
+          email: user.email,
+          name: user.displayName || user.email?.split('@')[0] || 'User'
+        })
+      });
+
+      const data = await response.json();
+      const userData = data.user || {
         id: user.uid,
         name: user.displayName || user.email?.split('@')[0] || 'User',
         email: user.email,
         xp: 0,
         level: 1
-      }));
+      };
+
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
 
       window.location.href = '/dashboard';
     } catch (err) {

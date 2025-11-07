@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import API_BASE_URL from "../config";
 
 export default function Quiz() {
   const [questions, setQuestions] = useState([]);
@@ -6,6 +7,7 @@ export default function Quiz() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [score, setScore] = useState(null);
+  const [showReview, setShowReview] = useState(false);
 
   useEffect(() => {
     const notes = localStorage.getItem("studentNotes");
@@ -15,7 +17,7 @@ export default function Quiz() {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch("http://localhost:5000/api/generate-quiz", {
+        const res = await fetch(`${API_BASE_URL}/generate-quiz`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ notes, level: "medium" })
@@ -41,36 +43,79 @@ export default function Quiz() {
     setAnswers(prev => ({ ...prev, [idx]: value }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     let correct = 0;
+    const detailedQuestions = [];
+    
     questions.forEach((q, i) => {
       const v = answers[i];
-      if (!v) return;
+      let isCorrect = false;
+      
       if (q.type === "mcq") {
-        if (v === q.a) correct += 1;
+        isCorrect = v === q.a;
       } else {
-        if ((v || "").toString().trim().toLowerCase() === (q.a || "").toString().trim().toLowerCase()) correct += 1;
+        isCorrect = (v || "").toString().trim().toLowerCase() === (q.a || "").toString().trim().toLowerCase();
       }
+      
+      if (isCorrect) correct += 1;
+      
+      detailedQuestions.push({
+        question: q.q,
+        type: q.type,
+        userAnswer: v || '',
+        correctAnswer: q.a,
+        isCorrect
+      });
     });
+    
     setScore(correct);
 
     // Award XP: 10 per correct
     const gained = correct * 10;
     const userRaw = localStorage.getItem('user');
+    
     if (userRaw) {
       const user = JSON.parse(userRaw);
       let xp = (user.xp || 0) + gained;
       let level = user.level || 1;
+      
       // Level-up loop
       while (xp >= level * 100) {
         xp -= level * 100;
         level += 1;
       }
+      
       const updated = { ...user, xp, level };
       localStorage.setItem('user', JSON.stringify(updated));
+
+      // Save to backend
+      try {
+        // Save quiz attempt
+        await fetch(`${API_BASE_URL}/quiz-attempt`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            questions: detailedQuestions,
+            score: correct,
+            totalQuestions: questions.length,
+            xpEarned: gained,
+            difficulty: 'medium'
+          })
+        });
+
+        // Update user XP and level
+        await fetch(`${API_BASE_URL}/firebase-user/${user.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ xp, level })
+        });
+      } catch (err) {
+        console.error('Failed to sync with backend:', err);
+      }
     }
 
-    // Track stats
+    // Track stats in localStorage
     const stats = JSON.parse(localStorage.getItem('stats') || '{}');
     stats.quizzesCompleted = (stats.quizzesCompleted || 0) + 1;
     stats.lastScore = correct;
@@ -117,7 +162,39 @@ export default function Quiz() {
       )}
       <button className="btn success" onClick={handleSubmit}>Submit</button>
       {score !== null && (
-        <p style={{ marginTop: 12 }}>You scored {score} / {questions.length}</p>
+        <div style={{ marginTop: 12 }}>
+          <p>You scored {score} / {questions.length}</p>
+          <button className="btn" onClick={() => setShowReview(!showReview)} style={{ marginTop: 8 }}>
+            {showReview ? 'Hide Review' : 'Review Answers'}
+          </button>
+          {showReview && (
+            <div className="quiz-review" style={{ marginTop: 16, textAlign: 'left' }}>
+              <h3>Answer Review</h3>
+              {questions.map((item, idx) => {
+                const userAns = answers[idx] || '';
+                const isCorrect = item.type === "mcq" 
+                  ? userAns === item.a 
+                  : userAns.toString().trim().toLowerCase() === item.a.toString().trim().toLowerCase();
+                
+                return (
+                  <div key={idx} style={{ 
+                    padding: '12px', 
+                    marginBottom: '10px', 
+                    background: isCorrect ? '#e7f5e7' : '#ffe7e7',
+                    borderRadius: '8px'
+                  }}>
+                    <p><strong>Q{idx + 1}:</strong> {item.q}</p>
+                    <p><strong>Your answer:</strong> {userAns || '(not answered)'}</p>
+                    <p><strong>Correct answer:</strong> {item.a}</p>
+                    <p style={{ color: isCorrect ? 'green' : 'red' }}>
+                      {isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

@@ -5,10 +5,18 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import User from './models/User.js';
+import FirebaseUser from './models/FirebaseUser.js';
+import QuizAttempt from './models/QuizAttempt.js';
+import Note from './models/Note.js';
 
 dotenv.config();
 
 const app = express();
+
+// TODO: Add rate limiting before production deployment
+// Example: import rateLimit from 'express-rate-limit';
+// const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+// app.use('/api/', apiLimiter);
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -180,6 +188,226 @@ Rules:
   } catch (err) {
     console.error('generate-quiz error:', err);
     return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// --- Firebase User Management ---
+// Get or create Firebase user
+app.post('/api/firebase-user', async (req, res) => {
+  try {
+    const { firebaseUid, email, name } = req.body;
+    
+    if (!firebaseUid || !email || !name) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    let user = await FirebaseUser.findOne({ firebaseUid });
+    
+    if (!user) {
+      user = await FirebaseUser.create({ firebaseUid, email, name });
+    }
+
+    res.json({ user: {
+      id: user.firebaseUid,
+      name: user.name,
+      email: user.email,
+      xp: user.xp,
+      level: user.level,
+      quizzesCompleted: user.quizzesCompleted
+    }});
+  } catch (error) {
+    console.error('Firebase user error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update Firebase user XP and level
+app.put('/api/firebase-user/:uid', async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { xp, level } = req.body;
+
+    const user = await FirebaseUser.findOneAndUpdate(
+      { firebaseUid: uid },
+      { xp, level },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ user: {
+      id: user.firebaseUid,
+      name: user.name,
+      email: user.email,
+      xp: user.xp,
+      level: user.level
+    }});
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// --- Quiz History ---
+// Save quiz attempt
+app.post('/api/quiz-attempt', async (req, res) => {
+  try {
+    const { userId, questions, score, totalQuestions, xpEarned, difficulty } = req.body;
+
+    if (!userId || score === undefined || !totalQuestions) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const attempt = await QuizAttempt.create({
+      userId,
+      questions,
+      score,
+      totalQuestions,
+      xpEarned,
+      difficulty
+    });
+
+    // Update user stats
+    await FirebaseUser.findOneAndUpdate(
+      { firebaseUid: userId },
+      { 
+        $inc: { quizzesCompleted: 1, totalScore: score, xp: xpEarned }
+      }
+    );
+
+    res.status(201).json({ attempt });
+  } catch (error) {
+    console.error('Save quiz attempt error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get quiz history for user
+app.get('/api/quiz-history/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const history = await QuizAttempt.find({ userId })
+      .sort({ completedAt: -1 })
+      .limit(limit);
+
+    res.json({ history });
+  } catch (error) {
+    console.error('Get quiz history error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get quiz statistics for user
+app.get('/api/quiz-stats/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const stats = await QuizAttempt.aggregate([
+      { $match: { userId } },
+      {
+        $group: {
+          _id: null,
+          totalQuizzes: { $sum: 1 },
+          totalScore: { $sum: '$score' },
+          totalQuestions: { $sum: '$totalQuestions' },
+          avgScore: { $avg: '$score' },
+          totalXP: { $sum: '$xpEarned' }
+        }
+      }
+    ]);
+
+    const result = stats[0] || {
+      totalQuizzes: 0,
+      totalScore: 0,
+      totalQuestions: 0,
+      avgScore: 0,
+      totalXP: 0
+    };
+
+    res.json({ stats: result });
+  } catch (error) {
+    console.error('Get quiz stats error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// --- Notes Management ---
+// Save note
+app.post('/api/notes', async (req, res) => {
+  try {
+    const { userId, title, content, subject, tags } = req.body;
+
+    if (!userId || !title || !content) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const note = await Note.create({ userId, title, content, subject, tags });
+    res.status(201).json({ note });
+  } catch (error) {
+    console.error('Save note error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get user notes
+app.get('/api/notes/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const notes = await Note.find({ userId }).sort({ createdAt: -1 });
+    res.json({ notes });
+  } catch (error) {
+    console.error('Get notes error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get single note
+app.get('/api/note/:noteId', async (req, res) => {
+  try {
+    const { noteId } = req.params;
+    const note = await Note.findById(noteId);
+    
+    if (!note) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+
+    res.json({ note });
+  } catch (error) {
+    console.error('Get note error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete note
+app.delete('/api/note/:noteId', async (req, res) => {
+  try {
+    const { noteId } = req.params;
+    await Note.findByIdAndDelete(noteId);
+    res.json({ message: 'Note deleted successfully' });
+  } catch (error) {
+    console.error('Delete note error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// --- Leaderboard ---
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    
+    const topUsers = await FirebaseUser.find()
+      .sort({ xp: -1 })
+      .limit(limit)
+      .select('name xp level quizzesCompleted');
+
+    res.json({ leaderboard: topUsers });
+  } catch (error) {
+    console.error('Leaderboard error:', error);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
