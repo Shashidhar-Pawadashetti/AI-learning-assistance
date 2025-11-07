@@ -45,7 +45,7 @@ export default function ProgressCharts({ quizHistory }) {
 
   const labels = sortedQuizzes.map((quiz, idx) => `Quiz ${idx + 1}`);
   const scorePercentages = sortedQuizzes.map(quiz => 
-    ((quiz.score / quiz.totalQuestions) * 100).toFixed(1)
+    (quiz.score / quiz.totalQuestions) * 100
   );
   const xpEarned = sortedQuizzes.map(quiz => quiz.xpEarned);
 
@@ -159,13 +159,13 @@ export default function ProgressCharts({ quizHistory }) {
       }}>
         <div>
           <p style={{ fontSize: '24px', fontWeight: 'bold', margin: '0' }}>
-            {Math.max(...scorePercentages)}%
+            {Math.max(...scorePercentages).toFixed(1)}%
           </p>
           <p style={{ margin: '5px 0 0 0', fontSize: '14px' }}>Best Score</p>
         </div>
         <div>
           <p style={{ fontSize: '24px', fontWeight: 'bold', margin: '0' }}>
-            {(scorePercentages.reduce((a, b) => parseFloat(a) + parseFloat(b), 0) / scorePercentages.length).toFixed(1)}%
+            {(scorePercentages.reduce((a, b) => a + b, 0) / scorePercentages.length).toFixed(1)}%
           </p>
           <p style={{ margin: '5px 0 0 0', fontSize: '14px' }}>Average Score</p>
         </div>
