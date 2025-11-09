@@ -9,6 +9,15 @@ export default function Quiz() {
 
   useEffect(() => {
     const notes = localStorage.getItem("studentNotes");
+    const difficulty = localStorage.getItem("quizDifficulty") || "medium";
+
+    // DEBUG: Log what we're sending
+    console.log('=== FRONTEND QUIZ DEBUG ===');
+    console.log('Notes from localStorage (first 500 chars):', notes ? notes.substring(0, 500) : 'EMPTY');
+    console.log('Notes length:', notes ? notes.length : 0);
+    console.log('Difficulty:', difficulty);
+    console.log('===========================');
+
     if (!notes) return;
 
     const fetchQuiz = async () => {
@@ -18,7 +27,7 @@ export default function Quiz() {
         const res = await fetch("http://localhost:5000/api/generate-quiz", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ notes, level: "medium" })
+          body: JSON.stringify({ notes, level: difficulty })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to generate quiz");
@@ -81,7 +90,10 @@ export default function Quiz() {
   return (
     <div className="quiz-card">
       <h2>Quiz Time 🎯</h2>
-      {loading && <p>Generating quiz…</p>}
+      <p style={{ color: '#666', marginBottom: '15px' }}>
+        {questions.length > 0 && `20 Questions - ${localStorage.getItem("quizDifficulty") || "medium"} difficulty`}
+      </p>
+      {loading && <p>Generating your 20-question quiz… This may take up to 90 seconds.</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {!loading && questions.length === 0 ? (
         <p>No notes uploaded yet. Please go back and upload notes first.</p>
@@ -89,7 +101,7 @@ export default function Quiz() {
         questions.map((item, idx) => (
           <div key={idx} className="question">
             <p>
-              {idx + 1}. {item.q}
+              <strong>Q{idx + 1}.</strong> {item.q}
             </p>
 
             {item.type === "blank" && (
@@ -115,9 +127,17 @@ export default function Quiz() {
           </div>
         ))
       )}
-      <button className="btn success" onClick={handleSubmit}>Submit</button>
+      <button className="btn success" onClick={handleSubmit} disabled={loading || questions.length === 0}>
+        Submit Quiz
+      </button>
       {score !== null && (
-        <p style={{ marginTop: 12 }}>You scored {score} / {questions.length}</p>
+        <div style={{ marginTop: 20, padding: '15px', backgroundColor: '#f0f0f0', borderRadius: '8px' }}>
+          <h3>Results</h3>
+          <p style={{ fontSize: '24px', fontWeight: 'bold', color: score >= 15 ? '#4CAF50' : score >= 10 ? '#FF9800' : '#f44336' }}>
+            Score: {score} / {questions.length} ({Math.round((score / questions.length) * 100)}%)
+          </p>
+          <p>XP Earned: +{score * 10}</p>
+        </div>
       )}
     </div>
   );

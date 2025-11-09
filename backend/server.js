@@ -78,105 +78,203 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/generate-quiz', async (req, res) => {
   try {
     const { notes, level = 'medium' } = req.body || {};
+
+    // DEBUG: Log what we received
+    console.log('=== QUIZ GENERATION DEBUG ===');
+    console.log('Notes received (first 500 chars):', notes ? notes.substring(0, 500) : 'EMPTY');
+    console.log('Notes length:', notes ? notes.length : 0);
+    console.log('Difficulty level:', level);
+    console.log('===========================');
+
     if (!notes || notes.trim().length < 20) {
       return res.status(400).json({ error: 'Please provide sufficient notes text (min 20 chars).' });
     }
 
     const hfApiKey = process.env.HF_API_KEY;
-    const model = process.env.HF_MODEL || 'google/flan-t5-large';
+    // Using Qwen2.5-7B-Instruct for excellent reasoning and quiz quality
+    const model = process.env.HF_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
     if (!hfApiKey) {
       return res.status(500).json({ error: 'Server is not configured with HF_API_KEY.' });
     }
 
-    // Truncate notes to ~2000 chars to avoid HF API payload limits
-    const maxNotesLength = 2000;
+    // Increase note limit for more comprehensive quiz generation
+    const maxNotesLength = 4000;
     const truncatedNotes = notes.length > maxNotesLength
       ? notes.substring(0, maxNotesLength) + '...'
       : notes;
 
-    const difficultyHint = level === 'easy' ? 'easy' : level === 'hard' ? 'challenging' : 'moderate';
+    const difficultyHint = level === 'easy' ? 'easy' : level === 'hard' ? 'very challenging and advanced' : 'moderately difficult to challenging';
 
-    const prompt = `You are a quiz generator. Read the STUDY_NOTES and produce a compact JSON with two sections: blanks and mcq.
-STUDY_NOTES:\n${truncatedNotes}\n\nOutput JSON with this exact shape and nothing else:
+    const prompt = `You are an expert educational quiz generator with strong reasoning skills. Your task is to create meaningful, thought-provoking quiz questions that test deep understanding of the content.
+
+STUDY NOTES:
+${truncatedNotes}
+
+INSTRUCTIONS:
+Analyze the study notes carefully and create 10 fill-in-the-blank questions and 10 multiple-choice questions that:
+1. Focus on KEY CONCEPTS, IMPORTANT FACTS, and MAIN IDEAS from the content
+2. Test comprehension and application, not just surface-level details
+3. Avoid questions about formatting, metadata, or document structure
+4. Each question should be meaningful and educational
+5. For fill-in-the-blank: Use blanks for important terms, concepts, or values
+6. For MCQ: Create plausible distractors that test understanding
+
+OUTPUT FORMAT (JSON only, no other text):
 {
   "blanks": [
-    {"q": "sentence with ____ blank", "a": "answer"}
+    {"q": "The main concept of ____ refers to...", "a": "concept name"},
+    {"q": "According to the notes, ____ is defined as...", "a": "term"},
+    ... (10 questions total)
   ],
   "mcq": [
-    {"q": "question?", "options": ["A","B","C","D"], "a": "correct option EXACTLY as in options"}
+    {"q": "What is the primary purpose of the concept discussed?", "options": ["Option A","Option B","Option C","Option D"], "a": "Option A"},
+    {"q": "How does the theory apply to practical scenarios?", "options": ["Choice 1","Choice 2","Choice 3","Choice 4"], "a": "Choice 2"},
+    ... (10 questions total)
   ]
 }
-Rules:
-- Difficulty: ${difficultyHint}
-- 3 blanks, 2 MCQs.
-- Keep q under 140 chars. Use facts from notes only. No markdown. No code fences.`;
 
-    // Small helper to build a basic quiz when HF API errors
+QUALITY REQUIREMENTS:
+- Difficulty level: ${difficultyHint}
+- Questions must be based on SUBSTANTIVE CONTENT from the notes
+- Avoid trivial details (headings, page numbers, formatting)
+- Each question should have clear educational value
+- MCQ options must be plausible and test real understanding
+- Ensure the answer "a" EXACTLY matches one of the options
+- Keep questions clear and under 200 characters
+- Use only ASCII characters, proper JSON escaping
+
+Generate EXACTLY 10 fill-in-the-blank and 10 multiple-choice questions. Output ONLY the JSON object.`;
+
+    // Enhanced fallback generator for 20 questions
     const buildFallback = (src) => {
       const sentences = src.split(/[.?!]/).map(s => s.trim()).filter(s => s.length > 12);
-      const blanks = sentences.slice(0, 3).map(s => {
+      const blanks = [];
+
+      // Generate 10 fill-in-the-blank questions
+      for (let i = 0; i < Math.min(10, sentences.length); i++) {
+        const s = sentences[i];
         const words = s.split(/\s+/);
-        const i = Math.min(Math.max(1, Math.floor(words.length / 3)), words.length - 1);
-        const a = words[i].replace(/[^a-zA-Z0-9]/g, '');
-        words[i] = '____';
-        return { q: words.join(' '), a };
-      });
-      const mcq = [
-        { q: 'What is a key topic from the notes?', options: ['Concept A', 'Concept B', 'Concept C', 'Concept D'], a: 'Concept A' },
-        { q: 'Which term best fits the context?', options: ['Term 1', 'Term 2', 'Term 3', 'Term 4'], a: 'Term 1' }
-      ];
+        const idx = Math.min(Math.max(1, Math.floor(words.length / 3)), words.length - 1);
+        const a = words[idx].replace(/[^a-zA-Z0-9]/g, '');
+        words[idx] = '____';
+        blanks.push({ q: words.join(' '), a });
+      }
+
+      // Generate 10 MCQ questions
+      const mcq = [];
+      const topics = ['main concept', 'key term', 'important detail', 'primary focus', 'essential element',
+        'critical point', 'fundamental idea', 'core principle', 'significant aspect', 'central theme'];
+
+      for (let i = 0; i < 10; i++) {
+        mcq.push({
+          q: `What is the ${topics[i]} discussed in the notes?`,
+          options: ['Option A', 'Option B', 'Option C', 'Option D'],
+          a: 'Option A'
+        });
+      }
+
       return { blanks, mcq };
     };
 
-    // Call Hugging Face with timeout and wait-for-model to avoid 503
+    // Call new Hugging Face Inference API (2025) - OpenAI-compatible chat completions
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), 90000);
     let data;
+
     try {
-      const response = await fetch(`https://api-inference.huggingface.co/models/${encodeURIComponent(model)}`, {
+      // Use the new OpenAI-compatible chat completions endpoint
+      const response = await fetch('https://router.huggingface.co/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${hfApiKey}`,
-          'Content-Type': 'application/json',
-          'x-wait-for-model': 'true'
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ inputs: prompt, parameters: { max_new_tokens: 256, temperature: 0.4 } }),
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 2048,
+          temperature: 0.8,
+          top_p: 0.95
+        }),
         signal: controller.signal
       });
+
+      clearTimeout(timeout);
 
       if (!response.ok) {
         const text = await response.text();
         console.error('HF API error:', response.status, text);
+        console.log('Falling back to local quiz generator');
         const { blanks, mcq } = buildFallback(truncatedNotes);
         return res.json({ blanks, mcq });
       }
 
       data = await response.json();
+
+      // Extract generated text from OpenAI-compatible chat completions response
+      let generated = '';
+      if (data?.choices?.[0]?.message?.content) {
+        generated = data.choices[0].message.content;
+      } else if (Array.isArray(data) && data[0]?.generated_text) {
+        generated = data[0].generated_text;
+      } else if (data?.generated_text) {
+        generated = data.generated_text;
+      } else {
+        throw new Error('Unexpected API response format');
+      }
+
+      // Try to parse JSON from the generated text
+      let parsed;
+      try {
+        // Try to extract JSON block from response
+        let jsonMatch = generated.match(/\{[\s\S]*\}/);
+        let jsonStr = jsonMatch ? jsonMatch[0] : generated;
+
+        // Clean up common JSON formatting issues
+        jsonStr = jsonStr
+          .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+          .replace(/\\/g, '\\\\') // Escape backslashes
+          .replace(/\\\\"/g, '\\"') // Fix double-escaped quotes
+          .replace(/\\\\\\/g, '\\') // Fix triple backslashes
+          .replace(/([^\\])"/g, '$1"') // Normalize quotes
+          .replace(/\n/g, ' ') // Remove newlines
+          .replace(/\r/g, '') // Remove carriage returns
+          .replace(/\t/g, ' '); // Replace tabs with spaces
+
+        // Try parsing the cleaned string
+        parsed = JSON.parse(jsonStr);
+
+        // Validate structure
+        if (!Array.isArray(parsed?.blanks) || !Array.isArray(parsed?.mcq)) {
+          throw new Error('Invalid quiz structure');
+        }
+      } catch (parseErr) {
+        console.error('JSON parse error:', parseErr);
+        console.log('AI Response:', generated);
+        console.log('Falling back to local quiz generator');
+        parsed = buildFallback(truncatedNotes);
+      }
+
+      // Normalize and return - ensure we have 10 of each type
+      const blanks = Array.isArray(parsed?.blanks) ? parsed.blanks.slice(0, 10) : [];
+      const mcq = Array.isArray(parsed?.mcq) ? parsed.mcq.slice(0, 10) : [];
+
+      console.log(`✓ Generated quiz with ${blanks.length} blanks and ${mcq.length} MCQs`);
+      return res.json({ blanks, mcq });
+
     } catch (apiErr) {
+      clearTimeout(timeout);
       console.error('HF API request failed:', apiErr?.message || apiErr);
+      console.log('Falling back to local quiz generator');
       const { blanks, mcq } = buildFallback(truncatedNotes);
       return res.json({ blanks, mcq });
-    } finally {
-      clearTimeout(timeout);
-    }
-    // HF text-generation returns array with generated_text
-    const generated = Array.isArray(data) && data[0]?.generated_text ? data[0].generated_text : (data?.generated_text || '');
-
-    let parsed;
-    try {
-      // Extract last JSON block if the model echoed prompt
-      const jsonStart = generated.lastIndexOf('{');
-      const jsonStr = jsonStart >= 0 ? generated.slice(jsonStart) : generated;
-      parsed = JSON.parse(jsonStr);
-    } catch {
-      // Fallback simple generator if JSON parse fails
-      parsed = buildFallback(truncatedNotes);
     }
 
-    // Normalize shape and respond
-    const blanks = Array.isArray(parsed?.blanks) ? parsed.blanks : [];
-    const mcq = Array.isArray(parsed?.mcq) ? parsed.mcq : [];
-    return res.json({ blanks, mcq });
   } catch (err) {
     console.error('generate-quiz error:', err);
     return res.status(500).json({ error: 'Server error' });
