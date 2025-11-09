@@ -97,20 +97,30 @@ app.post('/api/chatbot', async (req, res) => {
 
 app.post('/api/generate-quiz', async (req, res) => {
   try {
-    const { notes } = req.body;
+    const { notes, numQuestions = 5 } = req.body;
     
     if (!notes) {
       return res.status(400).json({ error: 'Notes are required' });
     }
 
+    if (numQuestions < 1 || numQuestions > 20) {
+      return res.status(400).json({ error: 'Number of questions must be between 1 and 20' });
+    }
+
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const prompt = `Based on the following notes, generate exactly 5 quiz questions in JSON format. Include 3 multiple choice questions and 2 fill-in-the-blank questions. Return ONLY valid JSON array without any markdown formatting or explanation.\n\nNotes: ${notes}\n\nFormat: [{"type":"mcq","q":"question text","options":["A","B","C","D"],"a":"correct answer"},{"type":"blank","q":"question with ____ blank","a":"answer"}]`;
+    const mcqCount = Math.ceil(numQuestions * 0.6);
+    const blankCount = numQuestions - mcqCount;
+    const prompt = `Based on the following notes, generate exactly ${numQuestions} quiz questions in JSON format. Include ${mcqCount} multiple choice questions and ${blankCount} fill-in-the-blank questions. If the notes don't have enough content, generate as many quality questions as possible. Return ONLY valid JSON array without any markdown formatting or explanation.\n\nNotes: ${notes}\n\nFormat: [{"type":"mcq","q":"question text","options":["A","B","C","D"],"a":"correct answer"},{"type":"blank","q":"question with ____ blank","a":"answer"}]`;
     
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     const jsonText = text.replace(/```json\n?|```\n?/g, '').trim();
     const questions = JSON.parse(jsonText);
+    
+    if (questions.length < numQuestions) {
+      return res.status(400).json({ error: `Could only generate ${questions.length} questions. The notes may not have enough content for ${numQuestions} questions.` });
+    }
     
     res.json({ questions });
   } catch (error) {

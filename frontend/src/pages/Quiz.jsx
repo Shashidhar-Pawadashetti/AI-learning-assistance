@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 
 export default function Quiz() {
@@ -6,20 +6,23 @@ export default function Quiz() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     const fetchQuiz = async () => {
       const notes = localStorage.getItem("studentNotes");
-      if (notes) {
+      const numQuestions = localStorage.getItem("numQuestions") || 5;
+      if (notes && isMounted) {
         try {
-          const { data } = await axios.post('http://localhost:5000/api/generate-quiz', { notes });
-          setQuestions(data.questions);
+          const { data } = await axios.post('http://localhost:5000/api/generate-quiz', { notes, numQuestions: parseInt(numQuestions) });
+          if (isMounted) setQuestions(data.questions);
         } catch (error) {
           console.error('Error generating quiz:', error);
-          alert('Failed to generate quiz. Please try again.');
+          if (isMounted) alert(error.response?.data?.error || 'Failed to generate quiz. The notes may not have enough content for the requested number of questions.');
         }
       }
-      setLoading(false);
+      if (isMounted) setLoading(false);
     };
     fetchQuiz();
+    return () => { isMounted = false; };
   }, []);
 
   return (

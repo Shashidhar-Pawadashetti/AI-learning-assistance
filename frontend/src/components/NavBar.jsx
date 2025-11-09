@@ -1,5 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { signOut, onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../firebase';
 
 export default function Navbar() {
   const [dark, setDark] = useState(false);
@@ -17,13 +19,34 @@ export default function Navbar() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     setIsLoggedIn(!!token);
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsLoggedIn(!!user || !!localStorage.getItem('token'));
+    });
+
+    const handleStorageChange = () => {
+      const token = localStorage.getItem('token');
+      setIsLoggedIn(!!token);
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setIsLoggedIn(false);
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      setIsLoggedIn(false);
+      navigate('/');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   return (
@@ -39,8 +62,8 @@ export default function Navbar() {
           <a onClick={handleLogout} style={{marginLeft: '25px', cursor: 'pointer'}}>Logout</a>
         ) : (
           <>
-            <Link to="/Login">Login</Link>
-            <Link to="/Signup">Signup</Link>
+            <Link to="/login">Login</Link>
+            <Link to="/signup">Signup</Link>
           </>
         )}
         <button className="toggle-btn" onClick={() => setDark(!dark)}>
