@@ -87,26 +87,28 @@ export default function Login() {
           <input
             type="email"
             placeholder="Email"
-            className="input-field"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            style={{ width: '100%', padding: '12px', margin: 0, marginBottom: '15px', borderRadius: '12px', border: '1px solid #d1d5db', fontSize: '16px' }}
           />
 
           <input
             type="password"
             placeholder="Password"
-            className="input-field"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            style={{ width: '100%', padding: '12px', margin: 0, marginBottom: '20px', borderRadius: '12px', border: '1px solid #d1d5db', fontSize: '16px' }}
           />
 
-          <button type="submit" className="btn">
-            Login
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', marginBottom: '15px' }}>
+            <button type="submit" className="btn" style={{ flex: 1, margin: 0, padding: '10px' }}>
+              Login
+            </button>
+            <button type="button" className="btn" style={{ flex: 1, margin: 0, padding: '10px' }} onClick={handleGoogleLogin}>
+              Continue with Google
+            </button>
+          </div>
         </form>
-        <button type="button" className="btn" style={{ marginTop: 12 }} onClick={handleGoogleLogin}>
-          Continue with Google
-        </button>
 
         <p className="signup-text" style={{ marginTop: 12 }}>
           Don’t have an account? <a href="/Signup">Sign Up</a>

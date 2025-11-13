@@ -4,15 +4,69 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import nodemailer from 'nodemailer';
 import User from './models/User.js';
+import { authMiddleware } from './middleware/auth.js';
 
 dotenv.config();
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// --- Email Verification Code Store (in-memory, for demo) ---
+const verificationCodes = {};
+
+// --- Nodemailer Transport Setup ---
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER, // Your Gmail address
+    pass: process.env.EMAIL_PASS  // App password (not your Gmail password)
+  }
+});
+
+// --- Send Verification Code Endpoint ---
+app.post('/api/send-verification-code', async (req, res) => {
+  const { email } = req.body;
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'Invalid email address.' });
+  }
+  // Generate 6-digit code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  verificationCodes[email] = code;
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Your Verification Code',
+      text: `Your verification code is: ${code}`
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Email send error:', err);
+    res.status(500).json({ error: 'Failed to send verification email.' });
+  }
+});
+
+// --- Verify Code Endpoint ---
+app.post('/api/verify-code', (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) {
+    return res.status(400).json({ error: 'Email and code required.' });
+  }
+  if (verificationCodes[email] === code) {
+    delete verificationCodes[email]; // Remove after verification
+    res.json({ success: true });
+  } else {
+    res.status(400).json({ error: 'Invalid code.' });
+  }
+});
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
@@ -75,17 +129,9 @@ app.post('/api/login', async (req, res) => {
 });
 
 // --- Quiz Generation using Hugging Face Inference API ---
-app.post('/api/generate-quiz', async (req, res) => {
+app.post('/api/generate-quiz', authMiddleware, async (req, res) => {
   try {
     const { notes, level = 'medium' } = req.body || {};
-
-    // DEBUG: Log what we received
-    console.log('=== QUIZ GENERATION DEBUG ===');
-    console.log('Notes received (first 500 chars):', notes ? notes.substring(0, 500) : 'EMPTY');
-    console.log('Notes length:', notes ? notes.length : 0);
-    console.log('Difficulty level:', level);
-    console.log('===========================');
-
     if (!notes || notes.trim().length < 20) {
       return res.status(400).json({ error: 'Please provide sufficient notes text (min 20 chars).' });
     }
@@ -278,6 +324,187 @@ Generate EXACTLY 10 fill-in-the-blank and 10 multiple-choice questions. Output O
   } catch (err) {
     console.error('generate-quiz error:', err);
     return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// --- Quiz Analysis ---
+app.post('/api/analyze-quiz', authMiddleware, async (req, res) => {
+  try {
+    const { questions = [], answers = {}, notes = '', difficulty = 'medium', timed = false, elapsedSeconds = 0 } = req.body || {};
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ error: 'No questions provided' });
+    }
+
+    // Basic scoring first (deterministic)
+    let score = 0;
+    const breakdown = questions.map((q, i) => {
+      const userAns = answers?.[i];
+      let correct = false;
+      if (q?.type === 'mcq') {
+        correct = (userAns || '') === (q?.a || '');
+      } else {
+        const ua = (userAns || '').toString().trim().toLowerCase();
+        const ca = (q?.a || '').toString().trim().toLowerCase();
+        correct = ua === ca || (ua && ca && (ua.includes(ca) || ca.includes(ua)));
+      }
+      if (correct) score += 1;
+      return { index: i, correct, yourAnswer: userAns ?? null, correctAnswer: q?.a ?? null };
+    });
+
+    // Try to get AI feedback/explanations via Hugging Face
+    const hfApiKey = process.env.HF_API_KEY;
+    const model = process.env.HF_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
+    let summary = '';
+    let aiBreakdown = [];
+    if (hfApiKey) {
+      try {
+        const compact = questions.map((q, i) => ({
+          i,
+          type: q.type,
+          q: q.q,
+          options: q.options || null,
+          correct: q.a,
+          user: answers?.[i] ?? null
+        }));
+
+        const prompt = `You are a helpful tutor. Analyze the following quiz attempt and provide concise feedback.
+NOTES (optional): ${notes ? notes.substring(0, 1500) : 'N/A'}
+DIFFICULTY: ${difficulty}
+TIMED: ${timed}
+ELAPSED_SECONDS: ${elapsedSeconds}
+
+For each question, provide a one-sentence explanation focusing on why the correct answer is correct and, if user is wrong, a short tip. Return strict JSON only:
+{
+  "summary": "one paragraph summary of performance and suggestions",
+  "breakdown": [
+    {"index": 0, "explanation": "..."},
+    ...
+  ]
+}
+
+QUESTIONS_AND_ANSWERS_JSON:
+${JSON.stringify(compact)}
+`;
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000);
+        const response = await fetch('https://router.huggingface.co/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${hfApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 800,
+            temperature: 0.5
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (response.ok) {
+          const data = await response.json();
+          let generated = data?.choices?.[0]?.message?.content || '';
+          const match = generated.match(/\{[\s\S]*\}/);
+          const jsonStr = (match ? match[0] : generated).trim();
+          try {
+            const parsed = JSON.parse(jsonStr);
+            if (parsed?.summary) summary = parsed.summary;
+            if (Array.isArray(parsed?.breakdown)) aiBreakdown = parsed.breakdown;
+          } catch { /* ignore, fallback below */ }
+        }
+      } catch (e) {
+        console.error('analyze-quiz AI feedback error:', e?.message || e);
+      }
+    }
+
+    // Merge AI explanations into breakdown if available
+    const merged = breakdown.map(b => {
+      const found = aiBreakdown.find(x => x.index === b.index);
+      let defaultExplanation = '';
+      if (!b.correct) {
+        // Provide a more meaningful fallback explanation for incorrect answers
+        const question = questions[b.index];
+        if (question?.type === 'mcq') {
+          defaultExplanation = `The correct answer is "${b.correctAnswer}". Review the related concept in your notes.`;
+        } else {
+          defaultExplanation = `The correct answer is "${b.correctAnswer}". Make sure to study this topic carefully.`;
+        }
+      }
+      return { ...b, explanation: found?.explanation || defaultExplanation };
+    });
+
+    return res.json({ score, total: questions.length, breakdown: merged, summary });
+  } catch (err) {
+    console.error('analyze-quiz error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// --- Save Quiz History ---
+app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
+  try {
+    const { attempt } = req.body;
+    const uid = req.user.uid;
+
+    let user = await User.findOne({ firebaseUid: uid });
+    if (!user) {
+      user = await User.create({
+        name: req.user.email.split('@')[0],
+        email: req.user.email,
+        password: 'firebase-auth',
+        firebaseUid: uid,
+        quizHistory: []
+      });
+    }
+
+    // Handle bulk update/delete operations
+    if (attempt.id === 'UPDATE_ALL' || attempt.id === 'DELETE_ALL') {
+      user.quizHistory = attempt.quizHistory || [];
+      await user.save();
+      return res.json({ success: true, history: user.quizHistory });
+    }
+
+    // Handle new quiz submission
+    user.quizHistory = user.quizHistory || [];
+    const isDuplicate = user.quizHistory.some(h => 
+      Math.abs(h.createdAt - attempt.createdAt) < 1000 && 
+      h.score === attempt.score && 
+      h.total === attempt.total
+    );
+    if (!isDuplicate) {
+      user.quizHistory.unshift(attempt);
+      user.quizHistory = user.quizHistory.slice(0, 50);
+      await user.save();
+    }
+    res.json({ success: true, history: user.quizHistory });
+  } catch (error) {
+    console.error('Save quiz history error:', error);
+    res.status(500).json({ error: 'Failed to save quiz history' });
+  }
+});
+
+// --- Get Quiz History ---
+app.get('/api/quiz-history', authMiddleware, async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    let user = await User.findOne({ firebaseUid: uid });
+    
+    if (!user) {
+      user = await User.create({
+        name: req.user.email.split('@')[0],
+        email: req.user.email,
+        password: 'firebase-auth',
+        firebaseUid: uid,
+        quizHistory: []
+      });
+    }
+    
+    res.json({ history: user.quizHistory || [] });
+  } catch (error) {
+    console.error('Get quiz history error:', error);
+    res.status(500).json({ error: 'Failed to get quiz history' });
   }
 });
 

@@ -147,7 +147,13 @@ export default function UploadNotes() {
       return;
     }
 
-    // DEBUG: Log what we're storing
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please login to generate a quiz.');
+      navigate('/login');
+      return;
+    }
+
     console.log('=== UPLOAD NOTE DEBUG ===');
     console.log('Storing notes (first 500 chars):', notes.substring(0, 500));
     console.log('Notes length:', notes.length);
@@ -156,6 +162,7 @@ export default function UploadNotes() {
 
     localStorage.setItem("studentNotes", notes);
     localStorage.setItem("quizDifficulty", difficulty);
+    localStorage.setItem("shouldGenerateQuiz", "true");
     navigate("/quiz");
   };
 

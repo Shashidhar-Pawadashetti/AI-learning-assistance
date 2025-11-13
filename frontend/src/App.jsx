@@ -7,6 +7,7 @@ import Achievements from "./pages/Achievements";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
   return (
@@ -16,12 +17,12 @@ export default function App() {
         <div className="content">
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/upload" element={<UploadNotes />} />
-            <Route path="/quiz" element={<Quiz />} />
-            <Route path="/achievements" element={<Achievements />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/upload" element={<ProtectedRoute><UploadNotes /></ProtectedRoute>} />
+            <Route path="/quiz" element={<ProtectedRoute><Quiz /></ProtectedRoute>} />
+            <Route path="/achievements" element={<ProtectedRoute><Achievements /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />1
+            <Route path="/signup" element={<Signup />} />
           </Routes>
         </div>
       </div>
