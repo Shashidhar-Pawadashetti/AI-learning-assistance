@@ -94,10 +94,24 @@ export default function Quiz() {
   // Collapsible review state
   const [reviewExpanded, setReviewExpanded] = useState(true);
   const [viewReviewExpanded, setViewReviewExpanded] = useState(true);
+  const [notification, setNotification] = useState('');
 
   useEffect(() => {
     const fetchHistory = async () => {
-      const token = localStorage.getItem('token');
+      let token = localStorage.getItem('token');
+      
+      // Refresh token
+      try {
+        const { auth } = await import('../firebase');
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          token = await currentUser.getIdToken(true);
+          localStorage.setItem('token', token);
+        }
+      } catch (e) {
+        console.error('Token refresh error:', e);
+      }
+      
       if (token) {
         try {
           const res = await fetch('http://localhost:5000/api/quiz-history', {
@@ -180,7 +194,19 @@ export default function Quiz() {
     if (submitting || submitted) return;
     setSubmitting(true);
     try {
-      const token = localStorage.getItem('token');
+      // Get fresh token
+      let token = localStorage.getItem('token');
+      try {
+        const { auth } = await import('../firebase');
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          token = await currentUser.getIdToken(true);
+          localStorage.setItem('token', token);
+        }
+      } catch (e) {
+        console.error('Token refresh error:', e);
+      }
+      
       if (!token) {
         setError('Please login to submit quiz.');
         navigate('/login');
@@ -272,6 +298,26 @@ export default function Quiz() {
         if (saveRes.ok) {
           const saveData = await saveRes.json();
           setHistory(saveData.history || []);
+          
+          // Update local user data
+          if (saveData.user) {
+            const localUser = JSON.parse(localStorage.getItem('user') || '{}');
+            localStorage.setItem('user', JSON.stringify({...localUser, ...saveData.user}));
+          }
+          
+          // Show XP and badge notifications
+          if (saveData.xpGained) {
+            const msg = `🎉 +${saveData.xpGained} XP earned!${saveData.bonusXP ? ` (+${saveData.bonusXP} bonus)` : ''}`;
+            setNotification(msg);
+            setTimeout(() => setNotification(''), 4000);
+          }
+          
+          if (saveData.newBadges && saveData.newBadges.length > 0) {
+            setTimeout(() => {
+              setNotification(`🏆 New Badge${saveData.newBadges.length > 1 ? 's' : ''} Unlocked: ${saveData.newBadges.join(', ')}`);
+              setTimeout(() => setNotification(''), 5000);
+            }, 4000);
+          }
         }
       } catch (saveErr) {
         console.error('Failed to save history:', saveErr);
@@ -373,10 +419,22 @@ export default function Quiz() {
   const generateQuiz = async () => {
     const notes = localStorage.getItem("studentNotes");
     const difficulty = localStorage.getItem("quizDifficulty") || "medium";
-    const token = localStorage.getItem('token');
     
-    if (!token) {
-      setError('Please login to generate a quiz.');
+    // Get fresh token from Firebase
+    let token = localStorage.getItem('token');
+    try {
+      const { auth } = await import('../firebase');
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        token = await currentUser.getIdToken(true);
+        localStorage.setItem('token', token);
+      } else {
+        setError('Please login to generate a quiz.');
+        navigate('/login');
+        return;
+      }
+    } catch (e) {
+      setError('Authentication error. Please login again.');
       navigate('/login');
       return;
     }
@@ -430,29 +488,41 @@ export default function Quiz() {
   }, [history]);
 
   return (
-    <div className="quiz-card">
-      {/* Enhanced Header */}
-      <div style={{ textAlign: 'center', marginBottom: 20 }}>
-        <h2 style={{ margin: '0 0 8px 0', fontSize: '28px', fontWeight: 'bold', color: '#1e293b' }}>Quiz Center</h2>
-        <p style={{ margin: '0 0 16px 0', color: '#64748b', fontSize: 'clamp(12px, 2vw, 14px)' }}>
-          {headerStats ? `Attempts: ${headerStats.attempts} · Best: ${headerStats.best}% · Avg: ${headerStats.avg}% · Last: ${headerStats.last}%` : 'No attempts yet'}
-        </p>
-        {headerStats && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 12 }}>
-            <div style={styles.statChip}>Timed: {headerStats.timedCount}</div>
-            <div style={styles.statChip}>Avg: {headerStats.avg}%</div>
-            <div style={styles.statChip}>Best: {headerStats.best}%</div>
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', maxWidth: '400px', margin: '0 auto' }}>
-          <button className="btn" onClick={() => setShowHistory(true)} style={{ flex: '1 1 auto', minWidth: 100 }}>View History</button>
-          <button className="btn success" onClick={handleStartNewQuiz} style={{ flex: '1 1 auto', minWidth: 120 }}>Start New Quiz</button>
+    <div style={{padding:'1.5rem',maxWidth:'1400px',margin:'0 auto'}}>
+      {/* Notification */}
+      {notification && (
+        <div style={{position:'fixed',top:'20px',right:'20px',zIndex:9999,background:'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',color:'white',padding:'1rem 1.5rem',borderRadius:'12px',boxShadow:'0 10px 30px rgba(0,0,0,0.3)',animation:'slideIn 0.3s ease',maxWidth:'400px'}}>
+          <strong>{notification}</strong>
         </div>
+      )}
+
+      {/* Header */}
+      <div style={{marginBottom:'2rem'}}>
+        <h1 style={{margin:0,fontSize:'2rem',fontWeight:'bold'}}>🎯 Quiz Center</h1>
+        <p style={{color:'#64748b',marginTop:'0.5rem'}}>
+          {headerStats ? `${headerStats.attempts} attempts · Best: ${headerStats.best}% · Avg: ${headerStats.avg}%` : 'Start your first quiz!'}
+        </p>
+      </div>
+
+      {/* Quick Stats */}
+      {headerStats && (
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'1rem',marginBottom:'2rem'}}>
+          <StatCard icon="📊" label="Total Attempts" value={headerStats.attempts} color="#3b82f6" />
+          <StatCard icon="🏆" label="Best Score" value={`${headerStats.best}%`} color="#f59e0b" />
+          <StatCard icon="📈" label="Average" value={`${headerStats.avg}%`} color="#8b5cf6" />
+          <StatCard icon="⏱️" label="Timed Quizzes" value={headerStats.timedCount} color="#ef4444" />
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div style={{display:'flex',gap:'1rem',marginBottom:'2rem',flexWrap:'wrap'}}>
+        <button className="btn" onClick={() => setShowHistory(true)} style={{flex:'1 1 200px',padding:'0.75rem 1.5rem'}}>📜 View History</button>
+        <button className="btn success" onClick={handleStartNewQuiz} style={{flex:'1 1 200px',padding:'0.75rem 1.5rem'}}>✨ Start New Quiz</button>
       </div>
 
       {/* History Panel */}
       {showHistory && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{background:'white',borderRadius:'12px',padding:'1.5rem',border:'1px solid #e2e8f0',marginBottom:'2rem'}}>
           {history.length === 0 ? (
             <div style={styles.emptyState}>
               No past quizzes yet. Generate one to get started.
@@ -654,15 +724,15 @@ export default function Quiz() {
 
       {/* Active Quiz Section */}
       {!showHistory && !viewAttempt && (
-        <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <div>
-              <h2 style={{ margin: 0 }}>Quiz Time 🎯</h2>
-              <p style={{ color: '#666', margin: '5px 0 0 0' }}>
-                {questions.length > 0 && `${questions.length} Questions - ${localStorage.getItem("quizDifficulty") || "medium"} difficulty`}
+        <div style={{background:'white',borderRadius:'12px',padding:'1.5rem',border:'1px solid #e2e8f0'}}>
+          {questions.length > 0 && (
+            <div style={{marginBottom:'1.5rem'}}>
+              <h2 style={{margin:0,fontSize:'1.5rem',fontWeight:'bold'}}>🎯 Quiz Time</h2>
+              <p style={{color:'#64748b',marginTop:'0.5rem'}}>
+                {questions.length} Questions · {localStorage.getItem("quizDifficulty") || "medium"} difficulty
               </p>
             </div>
-          </div>
+          )}
 
           {started && !submitted && questions.length > 0 && (
             <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', marginBottom: 12, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
@@ -681,7 +751,7 @@ export default function Quiz() {
           )}
 
           {!started && questions.length === 0 && (
-            <div style={{ ...styles.panel, marginBottom: 16 }}>
+            <div style={{background:'#f8fafc',borderRadius:'12px',padding:'1.5rem',border:'1px solid #e2e8f0',marginBottom:'1.5rem'}}>
               <p style={{ marginBottom: 12 }}>Name your quiz and set a topic (optional):</p>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <input
@@ -705,11 +775,12 @@ export default function Quiz() {
           )}
 
           {!started && questions.length > 0 && (
-            <div style={{ ...styles.panel, marginBottom: 16 }}>
-              <p style={{ marginBottom: 12 }}>How would you like to attempt the quiz?</p>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button className="btn" onClick={() => handleStart('untimed')}>Without Time</button>
-                <button className="btn" onClick={() => handleStart('timed')}>With Time ({questions.length} min)</button>
+            <div style={{background:'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',borderRadius:'12px',padding:'2rem',color:'white',marginBottom:'1.5rem',boxShadow:'0 10px 30px rgba(102,126,234,0.3)'}}>
+              <h3 style={{margin:'0 0 1rem 0',fontSize:'1.25rem'}}>Choose Quiz Mode</h3>
+              <p style={{opacity:0.9,marginBottom:'1.5rem'}}>How would you like to attempt this quiz?</p>
+              <div style={{display:'flex',gap:'1rem',flexWrap:'wrap'}}>
+                <button className="btn" onClick={() => handleStart('untimed')} style={{flex:'1 1 200px',background:'white',color:'#667eea',border:'none'}}>🕒 Untimed Mode</button>
+                <button className="btn" onClick={() => handleStart('timed')} style={{flex:'1 1 200px',background:'rgba(255,255,255,0.2)',color:'white',border:'2px solid white'}}>⏱️ Timed ({questions.length} min)</button>
               </div>
             </div>
           )}
@@ -776,30 +847,30 @@ export default function Quiz() {
             </button>
           )}
           {score !== null && (
-            <div style={{ marginTop: 20, padding: '15px', backgroundColor: '#f0f0f0', borderRadius: '8px' }}>
-              <h3>{quizName?.trim() ? quizName : 'Results'}</h3>
-              <p style={{ marginTop: -6, color: '#64748b' }}>{quizTopic?.trim() || 'General'} · {new Date().toLocaleString()}</p>
+            <div style={{marginTop:'2rem',background:'white',borderRadius:'16px',padding:'2rem',border:'1px solid #e2e8f0',boxShadow:'0 4px 12px rgba(0,0,0,0.08)'}}>
+              <h3 style={{margin:'0 0 0.5rem 0',fontSize:'1.5rem',color:'#1e293b'}}>{quizName?.trim() ? quizName : 'Quiz Results'}</h3>
+              <p style={{margin:0,color:'#64748b',fontSize:'0.875rem'}}>{quizTopic?.trim() || 'General'} · {new Date().toLocaleString()}</p>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, flexWrap: 'wrap', gap: 12 }}>
                 <div style={{ flex: '1 1 200px' }}>
-                  <p style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: score >= Math.ceil(questions.length * 0.75) ? '#4CAF50' : score >= Math.ceil(questions.length * 0.5) ? '#FF9800' : '#f44336' }}>
+                  <p style={{fontSize:'1.5rem',fontWeight:'bold',margin:0,color:score >= Math.ceil(questions.length * 0.75) ? '#22c55e' : score >= Math.ceil(questions.length * 0.5) ? '#f59e0b' : '#ef4444'}}>
                     Score: {score} / {questions.length}
                   </p>
-                  <p style={{ marginTop: 6 }}>XP Earned: +{score * 10}</p>
+                  <p style={{marginTop:'0.5rem',color:'#64748b'}}>XP Earned: +{score * 10}</p>
                 </div>
                 <div style={{ flex: '0 0 auto' }}>
                   <ScoreRing percent={Math.round((score / questions.length) * 100)} />
                 </div>
               </div>
               {analysis?.summary && (
-                <div style={{ marginTop: 8 }}>
-                  <strong>AI Summary:</strong>
-                  <p style={{ marginTop: 6 }}>{analysis.summary}</p>
+                <div style={{marginTop:'1.5rem',padding:'1rem',background:'#f8fafc',borderRadius:'8px',border:'1px solid #e2e8f0'}}>
+                  <strong style={{color:'#334155'}}>AI Summary:</strong>
+                  <p style={{marginTop:'0.5rem',color:'#475569',lineHeight:'1.6'}}>{analysis.summary}</p>
                 </div>
               )}
 
-              <div style={{ marginTop: 20 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <h4 style={{ margin: 0 }}>Question Review: ({questions.length})</h4>
+              <div style={{marginTop:'2rem'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+                  <h4 style={{margin:0,fontSize:'1.125rem',color:'#1e293b'}}>Question Review ({questions.length})</h4>
                   <button
                     className="btn"
                     onClick={() => setReviewExpanded(!reviewExpanded)}
@@ -821,8 +892,16 @@ export default function Quiz() {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
 }
+
+const StatCard = ({icon,label,value,color}) => (
+  <div style={{background:'white',borderRadius:'12px',padding:'1.5rem',border:'1px solid #e2e8f0',boxShadow:'0 2px 8px rgba(0,0,0,0.05)',textAlign:'center'}}>
+    <div style={{fontSize:'2rem',marginBottom:'0.5rem'}}>{icon}</div>
+    <div style={{fontSize:'0.875rem',color:'#64748b',marginBottom:'0.25rem'}}>{label}</div>
+    <div style={{fontSize:'1.75rem',fontWeight:'bold',color}}>{value}</div>
+  </div>
+);

@@ -455,7 +455,8 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
         email: req.user.email,
         password: 'firebase-auth',
         firebaseUid: uid,
-        quizHistory: []
+        quizHistory: [],
+        stats: {}
       });
     }
 
@@ -463,7 +464,7 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
     if (attempt.id === 'UPDATE_ALL' || attempt.id === 'DELETE_ALL') {
       user.quizHistory = attempt.quizHistory || [];
       await user.save();
-      return res.json({ success: true, history: user.quizHistory });
+      return res.json({ success: true, history: user.quizHistory, user: { xp: user.xp, level: user.level, stats: user.stats, badges: user.badges } });
     }
 
     // Handle new quiz submission
@@ -473,12 +474,118 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
       h.score === attempt.score && 
       h.total === attempt.total
     );
+    
     if (!isDuplicate) {
+      // Calculate XP with bonuses
+      let baseXP = attempt.score * 10;
+      let bonusXP = 0;
+      
+      // Difficulty bonus
+      if (attempt.difficulty === 'hard') bonusXP += Math.floor(baseXP * 0.5);
+      else if (attempt.difficulty === 'medium') bonusXP += Math.floor(baseXP * 0.25);
+      
+      // Timed bonus
+      if (attempt.timed) bonusXP += Math.floor(baseXP * 0.25);
+      
+      // Perfect score bonus
+      if (attempt.percent === 100) bonusXP += 100;
+      
+      // Streak bonus
+      const today = new Date().toDateString();
+      const lastDate = user.stats?.lastQuizDate || '';
+      const yesterday = new Date(Date.now() - 86400000).toDateString();
+      
+      if (lastDate === today) {
+        // Same day, no streak change
+      } else if (lastDate === yesterday) {
+        user.stats.currentStreak = (user.stats.currentStreak || 0) + 1;
+        bonusXP += Math.floor(baseXP * 0.1 * user.stats.currentStreak);
+      } else {
+        user.stats.currentStreak = 1;
+      }
+      
+      user.stats.lastQuizDate = today;
+      user.stats.longestStreak = Math.max(user.stats.longestStreak || 0, user.stats.currentStreak || 0);
+      
+      const totalXP = baseXP + bonusXP;
+      user.xp += totalXP;
+      
+      // Level up
+      while (user.xp >= user.level * 100) {
+        user.xp -= user.level * 100;
+        user.level += 1;
+      }
+      
+      // Update stats
+      user.stats.totalQuizzes = (user.stats.totalQuizzes || 0) + 1;
+      user.stats.totalCorrect = (user.stats.totalCorrect || 0) + attempt.score;
+      user.stats.totalQuestions = (user.stats.totalQuestions || 0) + attempt.total;
+      user.stats.totalTimeSpent = (user.stats.totalTimeSpent || 0) + (attempt.elapsedSeconds || 0);
+      user.stats.bestScore = Math.max(user.stats.bestScore || 0, attempt.percent);
+      user.stats.averageScore = Math.round((user.stats.totalCorrect / user.stats.totalQuestions) * 100);
+      
+      if (attempt.timed) user.stats.timedQuizzes = (user.stats.timedQuizzes || 0) + 1;
+      if (attempt.percent === 100) user.stats.perfectScores = (user.stats.perfectScores || 0) + 1;
+      
+      // Topic stats
+      const topic = attempt.topic || 'General';
+      const topicStats = user.stats.topicStats || new Map();
+      const current = topicStats.get(topic) || { count: 0, totalScore: 0, bestScore: 0 };
+      current.count += 1;
+      current.totalScore += attempt.percent;
+      current.bestScore = Math.max(current.bestScore, attempt.percent);
+      current.avgScore = Math.round(current.totalScore / current.count);
+      topicStats.set(topic, current);
+      user.stats.topicStats = topicStats;
+      
+      // Check and unlock badges
+      const newBadges = [];
+      const badgeChecks = [
+        { key: 'first_quiz', condition: user.stats.totalQuizzes >= 1 },
+        { key: 'quiz_5', condition: user.stats.totalQuizzes >= 5 },
+        { key: 'quiz_10', condition: user.stats.totalQuizzes >= 10 },
+        { key: 'quiz_25', condition: user.stats.totalQuizzes >= 25 },
+        { key: 'quiz_50', condition: user.stats.totalQuizzes >= 50 },
+        { key: 'quiz_100', condition: user.stats.totalQuizzes >= 100 },
+        { key: 'timed_1', condition: user.stats.timedQuizzes >= 1 },
+        { key: 'timed_10', condition: user.stats.timedQuizzes >= 10 },
+        { key: 'acc_70', condition: user.stats.bestScore >= 70 },
+        { key: 'acc_85', condition: user.stats.bestScore >= 85 },
+        { key: 'acc_95', condition: user.stats.bestScore >= 95 },
+        { key: 'perfect', condition: user.stats.perfectScores >= 1 },
+        { key: 'perfect_5', condition: user.stats.perfectScores >= 5 },
+        { key: 'streak_3', condition: user.stats.currentStreak >= 3 },
+        { key: 'streak_7', condition: user.stats.currentStreak >= 7 },
+        { key: 'streak_30', condition: user.stats.currentStreak >= 30 },
+        { key: 'level_10', condition: user.level >= 10 },
+        { key: 'level_25', condition: user.level >= 25 },
+        { key: 'level_50', condition: user.level >= 50 }
+      ];
+      
+      user.badges = user.badges || [];
+      badgeChecks.forEach(check => {
+        if (check.condition && !user.badges.find(b => b.key === check.key)) {
+          user.badges.push({ key: check.key, unlockedAt: Date.now() });
+          newBadges.push(check.key);
+          user.xp += 50; // Badge bonus XP
+        }
+      });
+      
       user.quizHistory.unshift(attempt);
       user.quizHistory = user.quizHistory.slice(0, 50);
       await user.save();
+      
+      res.json({ 
+        success: true, 
+        history: user.quizHistory,
+        user: { xp: user.xp, level: user.level, stats: user.stats, badges: user.badges },
+        xpGained: totalXP,
+        bonusXP,
+        newBadges
+      });
+    } else {
+      res.json({ success: true, history: user.quizHistory, user: { xp: user.xp, level: user.level, stats: user.stats, badges: user.badges } });
     }
-    res.json({ success: true, history: user.quizHistory });
   } catch (error) {
     console.error('Save quiz history error:', error);
     res.status(500).json({ error: 'Failed to save quiz history' });
@@ -497,7 +604,8 @@ app.get('/api/quiz-history', authMiddleware, async (req, res) => {
         email: req.user.email,
         password: 'firebase-auth',
         firebaseUid: uid,
-        quizHistory: []
+        quizHistory: [],
+        stats: {}
       });
     }
     
@@ -505,6 +613,36 @@ app.get('/api/quiz-history', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Get quiz history error:', error);
     res.status(500).json({ error: 'Failed to get quiz history' });
+  }
+});
+
+// --- Get User Stats ---
+app.get('/api/user-stats', authMiddleware, async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    let user = await User.findOne({ firebaseUid: uid });
+    
+    if (!user) {
+      user = await User.create({
+        name: req.user.email.split('@')[0],
+        email: req.user.email,
+        password: 'firebase-auth',
+        firebaseUid: uid,
+        stats: {}
+      });
+    }
+    
+    res.json({ 
+      xp: user.xp || 0,
+      level: user.level || 1,
+      stats: user.stats || {},
+      badges: user.badges || [],
+      name: user.name,
+      email: user.email
+    });
+  } catch (error) {
+    console.error('Get user stats error:', error);
+    res.status(500).json({ error: 'Failed to get user stats' });
   }
 });
 

@@ -2,17 +2,17 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as pdfjsLib from 'pdfjs-dist';
 
-// PDF.js worker configuration - use version-specific CDN
-const PDFJS_VERSION = '4.0.379'; // Use a stable version that's known to work
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.js`;
+// PDF.js worker configuration - match installed version
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.worker.min.js`;
 
-console.log('PDF.js configured with worker version:', PDFJS_VERSION);
+console.log('PDF.js worker configured');
 
 export default function UploadNotes() {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [difficulty, setDifficulty] = useState("medium");
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const navigate = useNavigate();
 
   const extractTextFromPDF = async (file) => {
@@ -28,9 +28,11 @@ export default function UploadNotes() {
 
       const loadingTask = pdfjsLib.getDocument({
         data: arrayBuffer,
-        verbosity: 0, // Reduce console noise
-        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+        verbosity: 0,
+        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/cmaps/',
         cMapPacked: true,
+        standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/standard_fonts/',
+        useSystemFonts: false
       });
 
       console.log('✓ PDF loading task created');
@@ -48,11 +50,13 @@ export default function UploadNotes() {
 
           const pageText = textContent.items
             .map(item => {
-              // Handle both string items and objects with 'str' property
-              return typeof item === 'string' ? item : (item.str || '');
+              if (typeof item === 'string') return item;
+              if (item.str) return item.str;
+              return '';
             })
+            .filter(text => text.trim().length > 0)
             .join(' ')
-            .replace(/\s+/g, ' ') // Normalize whitespace
+            .replace(/\s+/g, ' ')
             .trim();
 
           if (pageText) {
@@ -70,44 +74,35 @@ export default function UploadNotes() {
       setLoading(false);
 
       console.log(`=== EXTRACTION COMPLETE ===`);
-      console.log(`Total pages processed: ${pdf.numPages}`);
-      console.log(`Pages with text: ${extractedPages}`);
-      console.log(`Total characters extracted: ${fullText.length}`);
-      console.log(`First 200 chars: ${fullText.substring(0, 200)}`);
+      console.log(`Total pages: ${pdf.numPages}, Pages with text: ${extractedPages}, Characters: ${fullText.length}`);
 
-      if (!fullText.trim()) {
-        const msg = 'No text content found in the PDF.\n\nPossible reasons:\n- The PDF contains only images (scanned document)\n- The PDF is empty\n- The text is in a non-standard format\n\nPlease try:\n1. Opening the PDF and copying the text manually\n2. Using a different PDF file\n3. Converting scanned PDFs to text using OCR';
-        alert(msg);
+      if (!fullText.trim() || fullText.length < 10) {
+        setErrorMessage('No readable text found in PDF. The file may be scanned/image-based or encrypted. Please copy text manually (Ctrl+A, Ctrl+C from PDF viewer).');
         return '';
       }
+
+      setSuccessMessage(`✓ Successfully extracted ${fullText.length} characters from ${pdf.numPages} pages`);
+      setTimeout(() => setSuccessMessage(''), 3000);
 
       console.log('✓ PDF extraction successful!');
       return fullText.trim();
 
     } catch (error) {
-      console.error('=== PDF EXTRACTION ERROR ===');
-      console.error('Error type:', error.name);
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
-      console.error('Full error:', error);
-
+      console.error('PDF extraction error:', error.name, error.message);
       setLoading(false);
 
-      let errorMessage = 'Failed to extract text from PDF.\n\n';
-
+      let errorMsg = 'PDF extraction failed. ';
       if (error.message?.includes('Invalid PDF') || error.message?.includes('Invalid header')) {
-        errorMessage += 'Cause: The file appears to be corrupted or is not a valid PDF.\n\nSolution: Try opening the file in a PDF reader to verify it works, then try again.';
+        errorMsg += 'File may be corrupted or not a valid PDF.';
       } else if (error.message?.includes('password')) {
-        errorMessage += 'Cause: The PDF is password-protected.\n\nSolution: Remove the password protection and try again.';
-      } else if (error.message?.includes('worker') || error.message?.includes('Worker')) {
-        errorMessage += 'Cause: PDF.js worker failed to load.\n\nSolution: Check your internet connection and try again.';
-      } else if (error.name === 'UnknownErrorException') {
-        errorMessage += 'Cause: PDF parsing error.\n\nSolution: The PDF format might be incompatible. Try copying text manually.';
+        errorMsg += 'PDF is password-protected. Please unlock it first.';
+      } else if (error.message?.includes('worker')) {
+        errorMsg += 'PDF worker failed to load. Check your internet connection.';
       } else {
-        errorMessage += `Cause: ${error.message}\n\nSolution: Please try copying the text from the PDF manually and pasting it into the text area.`;
+        errorMsg += 'Please open the PDF, select all text (Ctrl+A), copy (Ctrl+C), and paste above.';
       }
 
-      alert(errorMessage);
+      setErrorMessage(errorMsg);
       return '';
     }
   };
@@ -123,19 +118,24 @@ export default function UploadNotes() {
       const extractedText = await extractTextFromPDF(file);
       if (extractedText) {
         setNotes(extractedText);
-        setErrorMessage(""); // Clear error on success
+        setErrorMessage("");
+        setSuccessMessage(`✓ Extracted ${extractedText.length} characters from PDF`);
+        setTimeout(() => setSuccessMessage(''), 3000);
       } else {
-        setErrorMessage("PDF extraction failed. Please copy the text from your PDF and paste it in the text area above.");
+        setErrorMessage("PDF extraction failed. Please copy text manually and paste above.");
       }
     } else {
       // For non-PDF files, read as text
       const reader = new FileReader();
       reader.onload = (event) => {
-        setNotes(event.target.result);
+        const text = event.target.result;
+        setNotes(text);
         setErrorMessage("");
+        setSuccessMessage(`✓ Loaded ${text.length} characters from ${file.name}`);
+        setTimeout(() => setSuccessMessage(''), 3000);
       };
       reader.onerror = () => {
-        setErrorMessage("Failed to read file. Please try pasting the text manually.");
+        setErrorMessage("Failed to read file. Please try pasting text manually.");
       };
       reader.readAsText(file);
     }
@@ -143,14 +143,14 @@ export default function UploadNotes() {
 
   const handleSubmit = () => {
     if (!notes.trim()) {
-      alert("Please paste or upload notes before generating a quiz.");
+      setErrorMessage("Please paste or upload notes before generating a quiz.");
       return;
     }
 
     const token = localStorage.getItem('token');
     if (!token) {
-      alert('Please login to generate a quiz.');
-      navigate('/login');
+      setErrorMessage('Please login to generate a quiz.');
+      setTimeout(() => navigate('/login'), 2000);
       return;
     }
 
@@ -167,76 +167,111 @@ export default function UploadNotes() {
   };
 
   return (
-    <div className="upload-card">
-      <h2>Upload Your Notes</h2>
-      <p>Paste your study notes or upload a file (supports .txt, .md, .pdf, code files, etc.).</p>
+    <div style={{padding:'1.5rem',maxWidth:'1000px',margin:'0 auto'}}>
+      {/* Header */}
+      <div style={{marginBottom:'2rem'}}>
+        <h1 style={{margin:0,fontSize:'2rem',fontWeight:'bold'}}>📝 Upload Your Notes</h1>
+        <p style={{color:'#64748b',marginTop:'0.5rem'}}>Paste or upload your study material to generate a personalized quiz</p>
+      </div>
+
+      {/* Main Card */}
+      <div style={{background:'white',borderRadius:'16px',padding:'2rem',border:'1px solid #e2e8f0',boxShadow:'0 4px 12px rgba(0,0,0,0.08)'}}>
 
       {loading && (
-        <p style={{ color: '#4CAF50', fontWeight: 'bold', margin: '10px 0' }}>
-          ⏳ Extracting text from PDF... Please wait.
-        </p>
-      )}
-
-      {errorMessage && (
-        <div style={{
-          backgroundColor: '#fff3cd',
-          border: '1px solid #ffc107',
-          borderRadius: '5px',
-          padding: '12px',
-          margin: '10px 0',
-          color: '#856404'
-        }}>
-          <strong>⚠️ {errorMessage}</strong>
+        <div style={{background:'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',borderRadius:'12px',padding:'1.5rem',color:'white',marginBottom:'1.5rem',textAlign:'center'}}>
+          <div style={{fontSize:'2rem',marginBottom:'0.5rem'}}>⏳</div>
+          <p style={{margin:0,fontWeight:'bold'}}>Extracting text from PDF... Please wait.</p>
         </div>
       )}
 
-      <textarea
-        className="file-input"
-        placeholder="Paste your notes here..."
-        rows="8"
-        value={notes}
-        onChange={(e) => {
-          setNotes(e.target.value);
-          setErrorMessage(""); // Clear error when user types
-        }}
-        disabled={loading}
-      />
+      {errorMessage && (
+        <div style={{background:'#fef3c7',border:'2px solid #f59e0b',borderRadius:'12px',padding:'1rem',marginBottom:'1.5rem',color:'#92400e'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
+            <span style={{fontSize:'1.5rem'}}>⚠️</span>
+            <strong>{errorMessage}</strong>
+          </div>
+        </div>
+      )}
 
-      <input
-        type="file"
-        accept=".txt,.md,.pdf,.doc,.docx,.html,.js,.jsx,.py,.java,.cpp,.c,.json,.xml,.csv"
-        className="file-input"
-        onChange={handleFileUpload}
-        disabled={loading}
-      />
+      {successMessage && (
+        <div style={{background:'#d1fae5',border:'2px solid #10b981',borderRadius:'12px',padding:'1rem',marginBottom:'1.5rem',color:'#065f46'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
+            <span style={{fontSize:'1.5rem'}}>✓</span>
+            <strong>{successMessage}</strong>
+          </div>
+        </div>
+      )}
 
-      <div style={{ margin: '15px 0' }}>
-        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
-          Quiz Difficulty Level:
-        </label>
+      <div style={{marginBottom:'1.5rem'}}>
+        <label style={{display:'block',marginBottom:'0.75rem',fontWeight:'600',color:'#334155',fontSize:'0.875rem'}}>📄 Your Notes</label>
+        <textarea
+          placeholder="Paste your notes here..."
+          rows="10"
+          value={notes}
+          onChange={(e) => {
+            setNotes(e.target.value);
+            setErrorMessage("");
+          }}
+          disabled={loading}
+          style={{width:'100%',padding:'1rem',border:'2px solid #e2e8f0',borderRadius:'12px',fontSize:'0.95rem',fontFamily:'inherit',resize:'vertical',transition:'border-color 0.2s'}}
+          onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+          onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
+        />
+        <div style={{marginTop:'0.5rem',fontSize:'0.875rem',color:'#64748b'}}>{notes.length} characters</div>
+      </div>
+
+      <div style={{marginBottom:'1.5rem'}}>
+        <label style={{display:'block',marginBottom:'0.75rem',fontWeight:'600',color:'#334155',fontSize:'0.875rem'}}>📎 Or Upload a File</label>
+        <input
+          type="file"
+          onChange={handleFileUpload}
+          disabled={loading}
+          style={{width:'100%',padding:'0.75rem',border:'2px dashed #cbd5e1',borderRadius:'12px',cursor:'pointer',background:'#f8fafc',transition:'all 0.2s'}}
+          onMouseEnter={(e) => {e.target.style.borderColor = '#3b82f6'; e.target.style.background = '#eff6ff';}}
+          onMouseLeave={(e) => {e.target.style.borderColor = '#cbd5e1'; e.target.style.background = '#f8fafc';}}
+        />
+        <div style={{marginTop:'0.5rem',fontSize:'0.75rem',color:'#64748b'}}>Supports: PDF, TXT, MD, DOC, code files, and more</div>
+      </div>
+
+      <div style={{marginBottom:'1.5rem'}}>
+        <label style={{display:'block',marginBottom:'0.75rem',fontWeight:'600',color:'#334155',fontSize:'0.875rem'}}>⚡ Quiz Difficulty</label>
         <select
           value={difficulty}
           onChange={(e) => setDifficulty(e.target.value)}
-          className="file-input"
           disabled={loading}
-          style={{ width: '100%', padding: '10px', cursor: 'pointer' }}
+          style={{width:'100%',padding:'0.875rem',border:'2px solid #e2e8f0',borderRadius:'12px',fontSize:'0.95rem',cursor:'pointer',background:'white',fontWeight:'500',transition:'border-color 0.2s'}}
+          onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+          onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
         >
-          <option value="easy">Easy - Basic recall and understanding</option>
-          <option value="medium">Medium - Moderate difficulty (Default)</option>
-          <option value="hard">Hard - Challenging and advanced</option>
+          <option value="easy">🟢 Easy - Basic recall and understanding</option>
+          <option value="medium">🟡 Medium - Moderate difficulty (Recommended)</option>
+          <option value="hard">🔴 Hard - Challenging and advanced</option>
         </select>
       </div>
 
-      <div style={{ marginTop: '10px', fontSize: '14px', color: '#666', lineHeight: '1.6' }}>
-        💡 <strong>Tips:</strong><br />
-        • For PDFs: The file will be automatically processed<br />
-        • If PDF fails: Open the PDF, select all text (Ctrl+A), copy (Ctrl+C), and paste above<br />
-        • For best results: Ensure your notes contain at least 200 words
+      <div style={{background:'#f0f9ff',border:'2px solid #3b82f6',borderRadius:'12px',padding:'1.25rem',marginBottom:'1.5rem'}}>
+        <div style={{display:'flex',gap:'0.75rem'}}>
+          <span style={{fontSize:'1.5rem'}}>💡</span>
+          <div style={{fontSize:'0.875rem',color:'#1e40af',lineHeight:'1.6'}}>
+            <strong style={{display:'block',marginBottom:'0.5rem'}}>Tips for Best Results:</strong>
+            • PDFs are automatically processed<br />
+            • If PDF fails: Copy text manually (Ctrl+A, Ctrl+C) and paste above<br />
+            • Minimum 200 words recommended for quality questions<br />
+            • Supports: PDF, TXT, MD, code files, and more
+          </div>
+        </div>
       </div>
 
-      <button className="btn" onClick={handleSubmit} disabled={loading}>
-        {loading ? 'Processing...' : 'Generate 20-Question Quiz'}
+      <button 
+        onClick={handleSubmit} 
+        disabled={loading || !notes.trim()}
+        style={{width:'100%',padding:'1rem 2rem',background:loading||!notes.trim()?'#cbd5e1':'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',color:'white',border:'none',borderRadius:'12px',fontSize:'1.125rem',fontWeight:'bold',cursor:loading||!notes.trim()?'not-allowed':'pointer',boxShadow:'0 4px 12px rgba(102,126,234,0.4)',transition:'transform 0.2s'}}
+        onMouseEnter={(e) => !loading && notes.trim() && (e.target.style.transform = 'translateY(-2px)')}
+        onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
+      >
+        {loading ? '⏳ Processing...' : '✨ Generate 20-Question Quiz'}
       </button>
+      </div>
     </div>
   );
 }

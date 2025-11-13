@@ -6,6 +6,8 @@ backend/node_modules/
 # Environment variables
 .env
 backend/.env
+frontend/.env
+frontend/.env.local
 
 # Build files
 frontend/dist/
@@ -14,6 +16,8 @@ frontend/build/
 # Logs
 *.log
 npm-debug.log*
+logs/
+backend/logs/
 
 # OS files
 .DS_Store
