@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword, updateProfile, signInWithPopup, fetchSignInMethodsForEmail, getAdditionalUserInfo, signOut } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
+import { API_URL } from '../config';
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -23,7 +24,7 @@ export default function Signup() {
     }
     setSending(true);
     try {
-      const res = await fetch("http://localhost:5000/api/send-verification-code", {
+      const res = await fetch(`${API_URL}/api/send-verification-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email })
@@ -47,7 +48,7 @@ export default function Signup() {
     }
     setVerifying(true);
     try {
-      const res = await fetch("http://localhost:5000/api/verify-code", {
+      const res = await fetch(`${API_URL}/api/verify-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code })

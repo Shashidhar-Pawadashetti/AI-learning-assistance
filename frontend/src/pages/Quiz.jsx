@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_URL } from '../config';
 
 // Style constants
 const styles = {
@@ -114,7 +115,7 @@ export default function Quiz() {
       
       if (token) {
         try {
-          const res = await fetch('http://localhost:5000/api/quiz-history', {
+          const res = await fetch(`${API_URL}/api/quiz-history`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (res.ok) {
@@ -223,7 +224,7 @@ export default function Quiz() {
         elapsedSeconds: Math.round(elapsedMs / 1000)
       };
 
-      const res = await fetch('http://localhost:5000/api/analyze-quiz', {
+      const res = await fetch(`${API_URL}/api/analyze-quiz`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -287,7 +288,7 @@ export default function Quiz() {
       };
       // Save to backend
       try {
-        const saveRes = await fetch('http://localhost:5000/api/save-quiz-history', {
+        const saveRes = await fetch(`${API_URL}/api/save-quiz-history`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -446,7 +447,7 @@ export default function Quiz() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("http://localhost:5000/api/generate-quiz", {
+      const res = await fetch(`${API_URL}/api/generate-quiz`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -600,7 +601,7 @@ export default function Quiz() {
                         const token = localStorage.getItem('token');
                         if (token) {
                           try {
-                            await fetch('http://localhost:5000/api/save-quiz-history', {
+                            await fetch(`${API_URL}/api/save-quiz-history`, {
                               method: 'POST',
                               headers: {
                                 'Content-Type': 'application/json',
@@ -643,7 +644,7 @@ export default function Quiz() {
                     setHistory(next);
                     const token = localStorage.getItem('token');
                     if (token) {
-                      fetch('http://localhost:5000/api/save-quiz-history', {
+                      fetch(`${API_URL}/api/save-quiz-history`, {
                         method: 'POST',
                         headers: {
                           'Content-Type': 'application/json',

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_URL } from '../config';
 
 const BADGES = [
   { key: 'first_quiz', title: 'First Steps', desc: 'Complete your first quiz', emoji: '🥇', category: 'Milestone' },
@@ -58,7 +59,7 @@ export default function Achievements() {
         return;
       }
       
-      const res = await fetch('http://localhost:5000/api/user-stats', {
+      const res = await fetch(`${API_URL}/api/user-stats`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {

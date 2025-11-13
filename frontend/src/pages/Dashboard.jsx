@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_URL } from '../config';
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -31,7 +32,7 @@ export default function Dashboard() {
         return;
       }
       
-      const res = await fetch('http://localhost:5000/api/user-stats', {
+      const res = await fetch(`${API_URL}/api/user-stats`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
