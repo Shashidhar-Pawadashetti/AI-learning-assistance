@@ -646,6 +646,96 @@ app.get('/api/user-stats', authMiddleware, async (req, res) => {
   }
 });
 
+// --- Chatbot Endpoint ---
+app.post('/api/chatbot', async (req, res) => {
+  try {
+    const { message, context = '' } = req.body;
+    if (!message || message.trim().length === 0) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const hfApiKey = process.env.HF_API_KEY;
+    const model = process.env.HF_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
+    
+    if (!hfApiKey) {
+      return res.json({ 
+        response: "I'm here to help with your learning! However, the AI service is currently unavailable. Please try again later or contact support."
+      });
+    }
+
+    const systemPrompt = `You are a helpful AI learning assistant for students. Your role is to:
+- Answer questions about study topics and concepts
+- Help explain difficult concepts in simple terms
+- Provide study tips and learning strategies
+- Assist with homework and assignments (guide, don't give direct answers)
+- Motivate and encourage students in their learning journey
+- Help with quiz preparation and study planning
+
+Keep responses concise, friendly, and educational. If asked about topics outside of learning/education, politely redirect to academic topics.`;
+
+    const userMessage = context ? `Context: ${context}\n\nQuestion: ${message}` : message;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    
+    try {
+      const response = await fetch('https://router.huggingface.co/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${hfApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          max_tokens: 500,
+          temperature: 0.7,
+          top_p: 0.9
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const aiResponse = data?.choices?.[0]?.message?.content || 'I apologize, but I couldn\'t process your question right now. Please try rephrasing it.';
+      
+      res.json({ response: aiResponse.trim() });
+      
+    } catch (apiError) {
+      clearTimeout(timeout);
+      console.error('Chatbot API error:', apiError);
+      
+      // Fallback responses based on common queries
+      let fallbackResponse = "I'm here to help with your studies! ";
+      const lowerMessage = message.toLowerCase();
+      
+      if (lowerMessage.includes('quiz') || lowerMessage.includes('test')) {
+        fallbackResponse += "For quiz help, try uploading your notes and generating practice questions. This helps reinforce your learning!";
+      } else if (lowerMessage.includes('study') || lowerMessage.includes('learn')) {
+        fallbackResponse += "Great study tips: break content into chunks, use active recall, and practice regularly. What specific topic are you studying?";
+      } else if (lowerMessage.includes('help') || lowerMessage.includes('stuck')) {
+        fallbackResponse += "I understand you're facing challenges. Try breaking the problem into smaller parts, review related concepts, or ask specific questions about what confuses you.";
+      } else {
+        fallbackResponse += "I'm designed to help with learning and studying. Feel free to ask about study strategies, concepts, or academic topics!";
+      }
+      
+      res.json({ response: fallbackResponse });
+    }
+    
+  } catch (error) {
+    console.error('Chatbot error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.listen(process.env.PORT, () => {
   console.log(`Server running on port ${process.env.PORT}`);
 });
