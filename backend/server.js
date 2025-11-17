@@ -528,12 +528,14 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
       const today = new Date().toDateString();
       const lastDate = user.stats?.lastQuizDate || '';
       const yesterday = new Date(Date.now() - 86400000).toDateString();
+      let streakIncreased = false;
       
       if (lastDate === today) {
         // Same day, no streak change
       } else if (lastDate === yesterday) {
         user.stats.currentStreak = (user.stats.currentStreak || 0) + 1;
         bonusXP += Math.floor(baseXP * 0.1 * user.stats.currentStreak);
+        streakIncreased = true;
       } else {
         user.stats.currentStreak = 1;
       }
@@ -615,7 +617,9 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
         user: { xp: user.xp, level: user.level, stats: user.stats, badges: user.badges },
         xpGained: totalXP,
         bonusXP,
-        newBadges
+        newBadges,
+        streakIncreased,
+        currentStreak: user.stats.currentStreak
       });
     } else {
       res.json({ success: true, history: user.quizHistory, user: { xp: user.xp, level: user.level, stats: user.stats, badges: user.badges } });
@@ -809,16 +813,17 @@ app.post('/api/chatbot', async (req, res) => {
     }
 
     const systemPrompt = `You are a helpful AI learning assistant for students. Your role is to:
-- Answer questions about study topics and concepts
-- Help explain difficult concepts in simple terms
+- Answer questions about the study material and quiz content provided in context
+- Explain concepts from the notes in simple terms
+- Help students understand specific topics from their study material
 - Provide study tips and learning strategies
-- Assist with homework and assignments (guide, don't give direct answers)
-- Motivate and encourage students in their learning journey
-- Help with quiz preparation and study planning
+- Answer questions directly based on the context provided
 
-Keep responses concise, friendly, and educational. If asked about topics outside of learning/education, politely redirect to academic topics.`;
+IMPORTANT: If context/study material is provided, answer questions based on that content. Be specific and reference the material.
 
-    const userMessage = context ? `Context: ${context}\n\nQuestion: ${message}` : message;
+Keep responses concise, friendly, and educational.`;
+
+    const userMessage = context ? `${context}\n\nStudent Question: ${message}` : message;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);

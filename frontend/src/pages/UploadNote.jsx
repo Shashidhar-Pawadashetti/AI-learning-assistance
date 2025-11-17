@@ -5,7 +5,6 @@ import { API_URL } from '../config';
 export default function UploadNotes() {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
-  const [difficulty, setDifficulty] = useState("medium");
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const navigate = useNavigate();
@@ -87,11 +86,10 @@ export default function UploadNotes() {
     console.log('=== UPLOAD NOTE DEBUG ===');
     console.log('Storing notes (first 500 chars):', notes.substring(0, 500));
     console.log('Notes length:', notes.length);
-    console.log('Difficulty:', difficulty);
     console.log('===========================');
 
     localStorage.setItem("studentNotes", notes);
-    localStorage.setItem("quizDifficulty", difficulty);
+    localStorage.setItem("quizDifficulty", "medium");
     localStorage.setItem("shouldGenerateQuiz", "true");
     navigate("/quiz");
   };
@@ -165,38 +163,9 @@ export default function UploadNotes() {
         <div style={{marginTop:'0.5rem',fontSize:'0.75rem',color:'#64748b'}}>Supports: PDF, Word (.docx), TXT, MD, and code files (.js, .py, .java, .html, etc.)</div>
       </div>
 
-      <div style={{marginBottom:'1.5rem'}}>
-        <label style={{display:'block',marginBottom:'0.75rem',fontWeight:'600',color:'#334155',fontSize:'0.875rem'}}>⚡ Quiz Difficulty</label>
-        <select
-          value={difficulty}
-          onChange={(e) => setDifficulty(e.target.value)}
-          disabled={loading}
-          style={{width:'100%',padding:'0.875rem',border:'2px solid #e2e8f0',borderRadius:'12px',fontSize:'0.95rem',cursor:'pointer',background:'white',fontWeight:'500',transition:'border-color 0.2s',boxSizing:'border-box'}}
-          onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-          onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-        >
-          <option value="easy">🟢 Easy - Basic recall and understanding</option>
-          <option value="medium">🟡 Medium - Moderate difficulty (Recommended)</option>
-          <option value="hard">🔴 Hard - Challenging and advanced</option>
-        </select>
-      </div>
 
-      <div style={{background:'#f0f9ff',border:'2px solid #3b82f6',borderRadius:'12px',padding:'1.25rem',marginBottom:'1.5rem'}}>
-        <div style={{display:'flex',gap:'0.75rem'}}>
-          <span style={{fontSize:'1.5rem'}}>💡</span>
-          <div style={{fontSize:'0.875rem',color:'#1e40af',lineHeight:'1.6'}}>
-            <strong style={{display:'block',marginBottom:'0.5rem'}}>How to Add Your Notes:</strong>
-            <strong>From PDF/Word (.docx):</strong><br />
-            1. Open your file<br />
-            2. Select All (Ctrl+A or Cmd+A)<br />
-            3. Copy (Ctrl+C or Cmd+C)<br />
-            4. Paste above (Ctrl+V or Cmd+V)<br />
-            <br />
-            <strong>From Text Files:</strong> Use the upload button<br />
-            <strong>Tip:</strong> 200+ words recommended for best quiz quality
-          </div>
-        </div>
-      </div>
+
+
 
       <button 
         onClick={handleSubmit} 

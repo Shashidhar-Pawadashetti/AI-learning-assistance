@@ -58,6 +58,10 @@ export default function Chatbot() {
     setIsLoading(true);
 
     try {
+      // Get quiz context from localStorage
+      const notes = localStorage.getItem('studentNotes') || '';
+      const contextText = notes ? `Study Material: ${notes.substring(0, 2000)}` : '';
+
       const response = await fetch(`${API_URL}/api/chatbot`, {
         method: 'POST',
         headers: {
@@ -65,7 +69,7 @@ export default function Chatbot() {
         },
         body: JSON.stringify({
           message: inputMessage,
-          context: ''
+          context: contextText
         })
       });
 

@@ -185,6 +185,7 @@ export default function Quiz() {
     setTimedMode(mode);
     setStarted(true);
     setStartTime(Date.now());
+    localStorage.setItem('quizStarted', 'true');
     if (mode === 'timed') {
       setTimeLeft(totalTime);
     }
@@ -238,6 +239,7 @@ export default function Quiz() {
       setAnalysis(data);
       setSubmitted(true);
       setTimeLeft(0); // Stop timer
+      localStorage.removeItem('quizStarted');
 
       // Award XP: 10 per correct
       const gained = (data.score || 0) * 10;
@@ -310,6 +312,14 @@ export default function Quiz() {
             const msg = `🎉 +${saveData.xpGained} XP earned!${saveData.bonusXP ? ` (+${saveData.bonusXP} bonus)` : ''}`;
             setNotification(msg);
             setTimeout(() => setNotification(''), 4000);
+          }
+          
+          // Show streak notification
+          if (saveData.streakIncreased && saveData.currentStreak > 1) {
+            setTimeout(() => {
+              setNotification(`🔥 ${saveData.currentStreak} Day Streak! Keep it up!`);
+              setTimeout(() => setNotification(''), 4000);
+            }, 4500);
           }
           
           if (saveData.newBadges && saveData.newBadges.length > 0) {
@@ -385,11 +395,7 @@ export default function Quiz() {
           <p style={{ marginTop: 4, color: '#334155' }}>Your answers: {userAnswers.join(', ')}</p>
         )}
         <p style={{ marginTop: 4, color: '#16a34a', fontWeight: 'bold' }}>Correct answers: {correctAnswers.join(', ')}</p>
-        {explanation && (
-          <div style={{ marginTop: 8, padding: '8px', background: 'rgba(255,255,255,0.5)', borderRadius: 6, fontSize: 14, color: '#334155' }}>
-            <strong>Explanation:</strong> {explanation}
-          </div>
-        )}
+
       </div>
     );
   };
@@ -765,6 +771,16 @@ export default function Quiz() {
                 />
                 <span style={{color:'#64748b',fontSize:'0.875rem'}}>Min: 10, Max: 50</span>
               </div>
+              <p style={{marginBottom:'0.75rem',fontWeight:'600',color:'#334155'}}>Quiz Difficulty:</p>
+              <select
+                value={localStorage.getItem('quizDifficulty') || 'medium'}
+                onChange={(e) => localStorage.setItem('quizDifficulty', e.target.value)}
+                style={{width:'100%',padding:'0.75rem',border:'2px solid #e2e8f0',borderRadius:'8px',fontSize:'0.95rem',cursor:'pointer',background:'white',fontWeight:'500',marginBottom:'1rem'}}
+              >
+                <option value="easy">🟢 Easy - Basic recall and understanding</option>
+                <option value="medium">🟡 Medium - Moderate difficulty (Recommended)</option>
+                <option value="hard">🔴 Hard - Challenging and advanced</option>
+              </select>
               <button className="btn" onClick={() => { localStorage.removeItem('shouldGenerateQuiz'); generateQuiz(); }} style={{width:'100%'}}>Start Quiz</button>
             </div>
           )}
