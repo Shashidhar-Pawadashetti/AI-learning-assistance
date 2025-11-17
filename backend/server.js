@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
+import multer from 'multer';
 import User from './models/User.js';
 import { authMiddleware } from './middleware/auth.js';
 
@@ -18,6 +19,13 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Multer configuration for file uploads
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
 
 // --- Email Verification Code Store (in-memory, for demo) ---
 const verificationCodes = {};
@@ -34,7 +42,7 @@ const transporter = nodemailer.createTransport({
 // --- Send Verification Code Endpoint ---
 app.post('/api/send-verification-code', async (req, res) => {
   const { email } = req.body;
-  if (!email || !email.includes('@')) {
+  if (!email || !email.includes('@gmail.com')) {
     return res.status(400).json({ error: 'Invalid email address.' });
   }
   // Generate 6-digit code
@@ -131,7 +139,7 @@ app.post('/api/login', async (req, res) => {
 // --- Quiz Generation using Hugging Face Inference API ---
 app.post('/api/generate-quiz', authMiddleware, async (req, res) => {
   try {
-    const { notes, level = 'medium' } = req.body || {};
+    const { notes, level = 'medium', numQuestions = 20 } = req.body || {};
     if (!notes || notes.trim().length < 20) {
       return res.status(400).json({ error: 'Please provide sufficient notes text (min 20 chars).' });
     }
@@ -151,75 +159,79 @@ app.post('/api/generate-quiz', authMiddleware, async (req, res) => {
 
     const difficultyHint = level === 'easy' ? 'easy' : level === 'hard' ? 'very challenging and advanced' : 'moderately difficult to challenging';
 
-    const prompt = `You are an expert educational quiz generator with strong reasoning skills. Your task is to create meaningful, thought-provoking quiz questions that test deep understanding of the content.
+    const totalQuestions = Math.max(10, Math.min(50, parseInt(numQuestions) || 20));
+    const mcqCount = Math.floor(totalQuestions / 2);
+    const multiselectCount = totalQuestions - mcqCount;
+
+    const prompt = `You are an expert educational quiz generator. Create a mixed quiz with both multiple-choice and multiple-select questions.
 
 STUDY NOTES:
 ${truncatedNotes}
 
 INSTRUCTIONS:
-Analyze the study notes carefully and create 10 fill-in-the-blank questions and 10 multiple-choice questions that:
-1. Focus on KEY CONCEPTS, IMPORTANT FACTS, and MAIN IDEAS from the content
-2. Test comprehension and application, not just surface-level details
-3. Avoid questions about formatting, metadata, or document structure
-4. Each question should be meaningful and educational
-5. For fill-in-the-blank: Use blanks for important terms, concepts, or values
-6. For MCQ: Create plausible distractors that test understanding
+Create EXACTLY ${totalQuestions} questions:
+- ${mcqCount} multiple-choice questions (MCQ) with 1 correct answer
+- ${multiselectCount} multiple-select questions with 2-3 correct answers
+- Mix them throughout (don't group by type)
 
-OUTPUT FORMAT (JSON only, no other text):
+OUTPUT FORMAT (JSON only):
 {
-  "blanks": [
-    {"q": "The main concept of ____ refers to...", "a": "concept name"},
-    {"q": "According to the notes, ____ is defined as...", "a": "term"},
-    ... (10 questions total)
-  ],
-  "mcq": [
-    {"q": "What is the primary purpose of the concept discussed?", "options": ["Option A","Option B","Option C","Option D"], "a": "Option A"},
-    {"q": "How does the theory apply to practical scenarios?", "options": ["Choice 1","Choice 2","Choice 3","Choice 4"], "a": "Choice 2"},
-    ... (10 questions total)
+  "questions": [
+    {"type":"mcq", "q":"What is X?", "options":["A","B","C","D"], "correctAnswers":["B"]},
+    {"type":"multiselect", "q":"Which are true about Y?", "options":["A","B","C","D"], "correctAnswers":["A","C"]},
+    ... (${totalQuestions} total)
   ]
 }
 
-QUALITY REQUIREMENTS:
-- Difficulty level: ${difficultyHint}
-- Questions must be based on SUBSTANTIVE CONTENT from the notes
-- Avoid trivial details (headings, page numbers, formatting)
-- Each question should have clear educational value
-- MCQ options must be plausible and test real understanding
-- Ensure the answer "a" EXACTLY matches one of the options
-- Keep questions clear and under 200 characters
-- Use only ASCII characters, proper JSON escaping
+REQUIREMENTS:
+- Difficulty: ${difficultyHint}
+- Focus on key concepts from notes
+- MCQ: exactly 1 correct answer
+- Multiselect: 2-3 correct answers
+- correctAnswers must match options exactly
+- Clear, concise questions
 
-Generate EXACTLY 10 fill-in-the-blank and 10 multiple-choice questions. Output ONLY the JSON object.`;
+Generate EXACTLY ${totalQuestions} questions (${mcqCount} MCQ + ${multiselectCount} multiselect, mixed). Output ONLY JSON.`;
 
-    // Enhanced fallback generator for 20 questions
+    // Fallback generator for mixed questions
     const buildFallback = (src) => {
-      const sentences = src.split(/[.?!]/).map(s => s.trim()).filter(s => s.length > 12);
-      const blanks = [];
+      const questions = [];
+      const words = src.split(/\s+/).filter(w => w.length > 3).slice(0, 100);
+      const topics = ['concepts', 'characteristics', 'features', 'elements', 'components', 'aspects', 'principles', 'ideas', 'factors', 'themes'];
 
-      // Generate 10 fill-in-the-blank questions
-      for (let i = 0; i < Math.min(10, sentences.length); i++) {
-        const s = sentences[i];
-        const words = s.split(/\s+/);
-        const idx = Math.min(Math.max(1, Math.floor(words.length / 3)), words.length - 1);
-        const a = words[idx].replace(/[^a-zA-Z0-9]/g, '');
-        words[idx] = '____';
-        blanks.push({ q: words.join(' '), a });
+      for (let i = 0; i < totalQuestions; i++) {
+        const baseIdx = i * 4;
+        if (i % 2 === 0) {
+          questions.push({
+            type: 'mcq',
+            q: `What is related to ${topics[i % 10]} in the content?`,
+            options: [
+              words[baseIdx % words.length] || 'Concept A',
+              words[(baseIdx + 1) % words.length] || 'Concept B',
+              words[(baseIdx + 2) % words.length] || 'Concept C',
+              words[(baseIdx + 3) % words.length] || 'Concept D'
+            ],
+            correctAnswers: [words[baseIdx % words.length] || 'Concept A']
+          });
+        } else {
+          questions.push({
+            type: 'multiselect',
+            q: `Select all that apply to ${topics[i % 10]}:`,
+            options: [
+              words[baseIdx % words.length] || 'Item A',
+              words[(baseIdx + 1) % words.length] || 'Item B',
+              words[(baseIdx + 2) % words.length] || 'Item C',
+              words[(baseIdx + 3) % words.length] || 'Item D'
+            ],
+            correctAnswers: [
+              words[baseIdx % words.length] || 'Item A',
+              words[(baseIdx + 1) % words.length] || 'Item B'
+            ]
+          });
+        }
       }
 
-      // Generate 10 MCQ questions
-      const mcq = [];
-      const topics = ['main concept', 'key term', 'important detail', 'primary focus', 'essential element',
-        'critical point', 'fundamental idea', 'core principle', 'significant aspect', 'central theme'];
-
-      for (let i = 0; i < 10; i++) {
-        mcq.push({
-          q: `What is the ${topics[i]} discussed in the notes?`,
-          options: ['Option A', 'Option B', 'Option C', 'Option D'],
-          a: 'Option A'
-        });
-      }
-
-      return { blanks, mcq };
+      return { questions };
     };
 
     // Call new Hugging Face Inference API (2025) - OpenAI-compatible chat completions
@@ -256,8 +268,8 @@ Generate EXACTLY 10 fill-in-the-blank and 10 multiple-choice questions. Output O
         const text = await response.text();
         console.error('HF API error:', response.status, text);
         console.log('Falling back to local quiz generator');
-        const { blanks, mcq } = buildFallback(truncatedNotes);
-        return res.json({ blanks, mcq });
+        const { questions } = buildFallback(truncatedNotes);
+        return res.json({ questions });
       }
 
       data = await response.json();
@@ -296,7 +308,7 @@ Generate EXACTLY 10 fill-in-the-blank and 10 multiple-choice questions. Output O
         parsed = JSON.parse(jsonStr);
 
         // Validate structure
-        if (!Array.isArray(parsed?.blanks) || !Array.isArray(parsed?.mcq)) {
+        if (!Array.isArray(parsed?.questions)) {
           throw new Error('Invalid quiz structure');
         }
       } catch (parseErr) {
@@ -306,19 +318,18 @@ Generate EXACTLY 10 fill-in-the-blank and 10 multiple-choice questions. Output O
         parsed = buildFallback(truncatedNotes);
       }
 
-      // Normalize and return - ensure we have 10 of each type
-      const blanks = Array.isArray(parsed?.blanks) ? parsed.blanks.slice(0, 10) : [];
-      const mcq = Array.isArray(parsed?.mcq) ? parsed.mcq.slice(0, 10) : [];
+      // Normalize and return
+      const questions = Array.isArray(parsed?.questions) ? parsed.questions.slice(0, totalQuestions) : [];
 
-      console.log(`✓ Generated quiz with ${blanks.length} blanks and ${mcq.length} MCQs`);
-      return res.json({ blanks, mcq });
+      console.log(`✓ Generated quiz with ${questions.length} questions`);
+      return res.json({ questions });
 
     } catch (apiErr) {
       clearTimeout(timeout);
       console.error('HF API request failed:', apiErr?.message || apiErr);
       console.log('Falling back to local quiz generator');
-      const { blanks, mcq } = buildFallback(truncatedNotes);
-      return res.json({ blanks, mcq });
+      const { questions } = buildFallback(truncatedNotes);
+      return res.json({ questions });
     }
 
   } catch (err) {
@@ -335,20 +346,43 @@ app.post('/api/analyze-quiz', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'No questions provided' });
     }
 
-    // Basic scoring first (deterministic)
+    // Scoring with partial marks for multiple-select
     let score = 0;
     const breakdown = questions.map((q, i) => {
-      const userAns = answers?.[i];
-      let correct = false;
-      if (q?.type === 'mcq') {
-        correct = (userAns || '') === (q?.a || '');
+      const userAnswer = answers?.[i];
+      const correctAnswers = q?.correctAnswers || [];
+      const questionType = q?.type || 'mcq';
+      
+      let marks = 0;
+      
+      if (questionType === 'mcq') {
+        // Single answer MCQ
+        marks = userAnswer === correctAnswers[0] ? 1 : 0;
       } else {
-        const ua = (userAns || '').toString().trim().toLowerCase();
-        const ca = (q?.a || '').toString().trim().toLowerCase();
-        correct = ua === ca || (ua && ca && (ua.includes(ca) || ca.includes(ua)));
+        // Multiple-select with partial marks
+        const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
+        if (userAnswers.length > 0) {
+          const correctSelected = userAnswers.filter(ans => correctAnswers.includes(ans)).length;
+          const incorrectSelected = userAnswers.filter(ans => !correctAnswers.includes(ans)).length;
+          
+          if (incorrectSelected > 0) {
+            marks = 0;
+          } else if (correctSelected === correctAnswers.length) {
+            marks = 1;
+          } else if (correctSelected > 0) {
+            marks = correctSelected / correctAnswers.length;
+          }
+        }
       }
-      if (correct) score += 1;
-      return { index: i, correct, yourAnswer: userAns ?? null, correctAnswer: q?.a ?? null };
+      
+      score += marks;
+      return { 
+        index: i, 
+        marks,
+        correct: marks === 1,
+        yourAnswer: userAnswer, 
+        correctAnswer: correctAnswers 
+      };
     });
 
     // Try to get AI feedback/explanations via Hugging Face
@@ -646,6 +680,66 @@ app.get('/api/user-stats', authMiddleware, async (req, res) => {
   }
 });
 
+// --- Document Extraction Endpoint (PDF & Word) ---
+app.post('/api/extract-pdf', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    console.log('Document extraction:', req.file.originalname, req.file.size, 'bytes');
+    const fileName = req.file.originalname.toLowerCase();
+
+    // Word documents (.docx)
+    if (fileName.endsWith('.docx')) {
+      try {
+        const mammoth = await import('mammoth');
+        const result = await mammoth.extractRawText({ buffer: req.file.buffer });
+        const text = result.value.trim();
+        
+        if (text && text.length >= 50) {
+          console.log(`✓ Extracted ${text.length} characters from Word`);
+          return res.json({ text, method: 'word' });
+        }
+        return res.status(400).json({ error: 'Could not extract text from Word document.' });
+      } catch (wordError) {
+        console.error('Word extraction error:', wordError.message);
+        return res.status(500).json({ error: 'Word extraction failed: ' + wordError.message });
+      }
+    }
+
+    // PDF documents
+    if (fileName.endsWith('.pdf')) {
+      let pdfParse;
+      try {
+        const pdfModule = await import('pdf-parse/lib/pdf-parse.js');
+        pdfParse = pdfModule.default;
+      } catch (importError) {
+        console.error('pdf-parse import failed:', importError.message);
+        return res.status(500).json({ error: 'PDF library not available. Please copy text manually.' });
+      }
+
+      const data = await pdfParse(req.file.buffer);
+      const text = data.text.trim();
+
+      if (text && text.length >= 50) {
+        console.log(`✓ Extracted ${text.length} characters from PDF`);
+        return res.json({ text, method: 'text' });
+      }
+
+      return res.status(400).json({ 
+        error: 'Could not extract text. This may be a scanned PDF. Please copy text manually.' 
+      });
+    }
+
+    return res.status(400).json({ error: 'Unsupported file type. Please use PDF or DOCX files.' });
+
+  } catch (error) {
+    console.error('PDF extraction error:', error);
+    res.status(500).json({ error: 'PDF extraction failed: ' + error.message });
+  }
+});
+
 // --- Chatbot Endpoint ---
 app.post('/api/chatbot', async (req, res) => {
   try {
@@ -654,13 +748,64 @@ app.post('/api/chatbot', async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
+    console.log('Chatbot request:', { message: message.substring(0, 100) });
+    
     const hfApiKey = process.env.HF_API_KEY;
     const model = process.env.HF_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
     
+    console.log('HF_API_KEY available:', !!hfApiKey);
+    
+    // Enhanced fallback function
+    const getFallbackResponse = (msg) => {
+      const lowerMessage = msg.toLowerCase();
+      
+      if (lowerMessage.includes('study better') || lowerMessage.includes('how to study')) {
+        return "Here are proven study techniques: 1) Use active recall - test yourself frequently, 2) Space out your learning sessions, 3) Break topics into smaller chunks, 4) Teach concepts to others, 5) Use multiple senses (visual, auditory), 6) Take regular breaks, 7) Create a distraction-free environment. What subject are you studying?";
+      }
+      
+      if (lowerMessage.includes('quiz') || lowerMessage.includes('test') || lowerMessage.includes('exam')) {
+        return "For effective test preparation: 1) Upload your notes to generate practice quizzes, 2) Review mistakes carefully, 3) Practice under timed conditions, 4) Focus on weak areas, 5) Get enough sleep before exams. Need help with a specific subject?";
+      }
+      
+      if (lowerMessage.includes('math') || lowerMessage.includes('mathematics')) {
+        return "Math study tips: 1) Practice problems daily, 2) Understand concepts before memorizing formulas, 3) Work through examples step-by-step, 4) Identify your mistake patterns, 5) Use visual aids for complex problems. What math topic are you working on?";
+      }
+      
+      if (lowerMessage.includes('science') || lowerMessage.includes('physics') || lowerMessage.includes('chemistry') || lowerMessage.includes('biology')) {
+        return "Science learning strategies: 1) Connect theory to real-world examples, 2) Use diagrams and flowcharts, 3) Practice lab procedures mentally, 4) Explain processes in your own words, 5) Form study groups for discussions. Which science subject interests you?";
+      }
+      
+      if (lowerMessage.includes('memory') || lowerMessage.includes('remember') || lowerMessage.includes('memorize')) {
+        return "Memory enhancement techniques: 1) Use mnemonics and acronyms, 2) Create mental associations, 3) Review material before sleeping, 4) Use the method of loci, 5) Practice retrieval regularly. What do you need help remembering?";
+      }
+      
+      if (lowerMessage.includes('motivation') || lowerMessage.includes('procrastination')) {
+        return "Stay motivated with these tips: 1) Set small, achievable goals, 2) Reward yourself for progress, 3) Find your peak energy hours, 4) Use the Pomodoro technique, 5) Connect learning to your future goals. What's your biggest challenge?";
+      }
+      
+      if (lowerMessage.includes('time') || lowerMessage.includes('schedule') || lowerMessage.includes('manage')) {
+        return "Time management for students: 1) Use a planner or calendar, 2) Prioritize tasks by importance, 3) Block time for focused study, 4) Eliminate distractions, 5) Include breaks and leisure time. How much time do you have for studying?";
+      }
+      
+      if (lowerMessage.includes('notes') || lowerMessage.includes('note-taking')) {
+        return "Effective note-taking methods: 1) Use the Cornell note system, 2) Write in your own words, 3) Include examples and diagrams, 4) Review and revise notes regularly, 5) Use colors and highlighting strategically. What format works best for you?";
+      }
+      
+      if (lowerMessage.includes('help') || lowerMessage.includes('stuck') || lowerMessage.includes('difficult')) {
+        return "When you're stuck: 1) Break the problem into smaller parts, 2) Look for similar examples, 3) Ask specific questions, 4) Take a short break and return fresh, 5) Explain what you do understand first. What specific part is challenging you?";
+      }
+      
+      if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
+        return "Hello! I'm your AI learning assistant. I can help you with study strategies, explain concepts, provide learning tips, and support your academic journey. What would you like to learn about today?";
+      }
+      
+      // Default response
+      return "I'm your AI learning assistant! I can help with study techniques, explain concepts, provide learning strategies, and support your academic goals. Try asking me about: study methods, time management, memory techniques, test preparation, or specific subjects like math, science, or languages. What would you like to know?";
+    };
+    
     if (!hfApiKey) {
-      return res.json({ 
-        response: "I'm here to help with your learning! However, the AI service is currently unavailable. Please try again later or contact support."
-      });
+      console.log('No HF_API_KEY, using fallback response');
+      return res.json({ response: getFallbackResponse(message) });
     }
 
     const systemPrompt = `You are a helpful AI learning assistant for students. Your role is to:
@@ -679,6 +824,7 @@ Keep responses concise, friendly, and educational. If asked about topics outside
     const timeout = setTimeout(() => controller.abort(), 30000);
     
     try {
+      console.log('Making HF API request...');
       const response = await fetch('https://router.huggingface.co/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -699,40 +845,34 @@ Keep responses concise, friendly, and educational. If asked about topics outside
       });
 
       clearTimeout(timeout);
+      console.log('HF API response status:', response.status);
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('HF API error:', response.status, errorText);
         throw new Error(`API error: ${response.status}`);
       }
 
       const data = await response.json();
-      const aiResponse = data?.choices?.[0]?.message?.content || 'I apologize, but I couldn\'t process your question right now. Please try rephrasing it.';
+      const aiResponse = data?.choices?.[0]?.message?.content;
       
-      res.json({ response: aiResponse.trim() });
+      if (aiResponse) {
+        console.log('AI response received successfully');
+        return res.json({ response: aiResponse.trim() });
+      } else {
+        console.log('No AI response content, using fallback');
+        return res.json({ response: getFallbackResponse(message) });
+      }
       
     } catch (apiError) {
       clearTimeout(timeout);
-      console.error('Chatbot API error:', apiError);
-      
-      // Fallback responses based on common queries
-      let fallbackResponse = "I'm here to help with your studies! ";
-      const lowerMessage = message.toLowerCase();
-      
-      if (lowerMessage.includes('quiz') || lowerMessage.includes('test')) {
-        fallbackResponse += "For quiz help, try uploading your notes and generating practice questions. This helps reinforce your learning!";
-      } else if (lowerMessage.includes('study') || lowerMessage.includes('learn')) {
-        fallbackResponse += "Great study tips: break content into chunks, use active recall, and practice regularly. What specific topic are you studying?";
-      } else if (lowerMessage.includes('help') || lowerMessage.includes('stuck')) {
-        fallbackResponse += "I understand you're facing challenges. Try breaking the problem into smaller parts, review related concepts, or ask specific questions about what confuses you.";
-      } else {
-        fallbackResponse += "I'm designed to help with learning and studying. Feel free to ask about study strategies, concepts, or academic topics!";
-      }
-      
-      res.json({ response: fallbackResponse });
+      console.error('Chatbot API error:', apiError.message);
+      return res.json({ response: getFallbackResponse(message) });
     }
     
   } catch (error) {
     console.error('Chatbot error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return res.json({ response: "I'm here to help with your learning! I'm having some technical difficulties right now, but I can still provide study tips and guidance. What would you like to know about?" });
   }
 });
 

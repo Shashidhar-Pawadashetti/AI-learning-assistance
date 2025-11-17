@@ -1,11 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import * as pdfjsLib from 'pdfjs-dist';
-
-// PDF.js worker configuration - match installed version
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.worker.min.js`;
-
-console.log('PDF.js worker configured');
+import { API_URL } from '../config';
 
 export default function UploadNotes() {
   const [notes, setNotes] = useState("");
@@ -15,129 +10,64 @@ export default function UploadNotes() {
   const [successMessage, setSuccessMessage] = useState("");
   const navigate = useNavigate();
 
-  const extractTextFromPDF = async (file) => {
-    try {
-      setLoading(true);
-      console.log('=== PDF EXTRACTION START ===');
-      console.log('File name:', file.name);
-      console.log('File size:', file.size, 'bytes');
-      console.log('File type:', file.type);
 
-      const arrayBuffer = await file.arrayBuffer();
-      console.log('✓ File loaded as ArrayBuffer');
-
-      const loadingTask = pdfjsLib.getDocument({
-        data: arrayBuffer,
-        verbosity: 0,
-        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/cmaps/',
-        cMapPacked: true,
-        standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/standard_fonts/',
-        useSystemFonts: false
-      });
-
-      console.log('✓ PDF loading task created');
-
-      const pdf = await loadingTask.promise;
-      console.log(`✓ PDF loaded successfully: ${pdf.numPages} pages`);
-
-      let fullText = '';
-      let extractedPages = 0;
-
-      for (let i = 1; i <= pdf.numPages; i++) {
-        try {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-
-          const pageText = textContent.items
-            .map(item => {
-              if (typeof item === 'string') return item;
-              if (item.str) return item.str;
-              return '';
-            })
-            .filter(text => text.trim().length > 0)
-            .join(' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-          if (pageText) {
-            fullText += pageText + '\n\n';
-            extractedPages++;
-          }
-
-          console.log(`✓ Extracted page ${i}/${pdf.numPages} (${pageText.length} chars)`);
-        } catch (pageError) {
-          console.warn(`⚠ Error on page ${i}:`, pageError);
-          // Continue with other pages even if one fails
-        }
-      }
-
-      setLoading(false);
-
-      console.log(`=== EXTRACTION COMPLETE ===`);
-      console.log(`Total pages: ${pdf.numPages}, Pages with text: ${extractedPages}, Characters: ${fullText.length}`);
-
-      if (!fullText.trim() || fullText.length < 10) {
-        setErrorMessage('No readable text found in PDF. The file may be scanned/image-based or encrypted. Please copy text manually (Ctrl+A, Ctrl+C from PDF viewer).');
-        return '';
-      }
-
-      setSuccessMessage(`✓ Successfully extracted ${fullText.length} characters from ${pdf.numPages} pages`);
-      setTimeout(() => setSuccessMessage(''), 3000);
-
-      console.log('✓ PDF extraction successful!');
-      return fullText.trim();
-
-    } catch (error) {
-      console.error('PDF extraction error:', error.name, error.message);
-      setLoading(false);
-
-      let errorMsg = 'PDF extraction failed. ';
-      if (error.message?.includes('Invalid PDF') || error.message?.includes('Invalid header')) {
-        errorMsg += 'File may be corrupted or not a valid PDF.';
-      } else if (error.message?.includes('password')) {
-        errorMsg += 'PDF is password-protected. Please unlock it first.';
-      } else if (error.message?.includes('worker')) {
-        errorMsg += 'PDF worker failed to load. Check your internet connection.';
-      } else {
-        errorMsg += 'Please open the PDF, select all text (Ctrl+A), copy (Ctrl+C), and paste above.';
-      }
-
-      setErrorMessage(errorMsg);
-      return '';
-    }
-  };
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setErrorMessage(""); // Clear any previous errors
+    setErrorMessage("");
+    setSuccessMessage("");
+    setLoading(true);
 
-    // Check if it's a PDF file
-    if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-      const extractedText = await extractTextFromPDF(file);
-      if (extractedText) {
-        setNotes(extractedText);
-        setErrorMessage("");
-        setSuccessMessage(`✓ Extracted ${extractedText.length} characters from PDF`);
-        setTimeout(() => setSuccessMessage(''), 3000);
-      } else {
-        setErrorMessage("PDF extraction failed. Please copy text manually and paste above.");
+    // PDF and Word files - use backend extraction
+    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf') || 
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
+        file.name.toLowerCase().endsWith('.docx')) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch(`${API_URL}/api/extract-pdf`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await response.json();
+        setLoading(false);
+        
+        if (response.ok && data.text && data.text.length >= 50) {
+          setNotes(data.text);
+        } else {
+          setErrorMessage('Could not extract text. Please open the file, select all (Ctrl+A), copy (Ctrl+C), and paste above.');
+        }
+      } catch (error) {
+        setLoading(false);
+        setErrorMessage('Extraction failed. Please open the file, select all (Ctrl+A), copy (Ctrl+C), and paste above.');
       }
-    } else {
-      // For non-PDF files, read as text
+      return;
+    }
+
+    // Text-based files
+    const textExtensions = ['.txt', '.md', '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.c', '.cpp', '.html', '.css', '.json', '.xml', '.csv', '.log', '.sh', '.bat', '.sql', '.r', '.swift', '.go', '.rs', '.php', '.rb', '.kt', '.scala'];
+    const isTextFile = textExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+
+    if (isTextFile || file.type.startsWith('text/')) {
       const reader = new FileReader();
       reader.onload = (event) => {
         const text = event.target.result;
         setNotes(text);
-        setErrorMessage("");
-        setSuccessMessage(`✓ Loaded ${text.length} characters from ${file.name}`);
         setTimeout(() => setSuccessMessage(''), 3000);
+        setLoading(false);
       };
       reader.onerror = () => {
-        setErrorMessage("Failed to read file. Please try pasting text manually.");
+        setErrorMessage("Failed to read file. Please paste text manually.");
+        setLoading(false);
       };
       reader.readAsText(file);
+    } else {
+      setLoading(false);
+      setErrorMessage(`Unsupported file type. Please use PDF, Word (.docx), TXT, MD, or code files.`);
     }
   };
 
@@ -180,7 +110,8 @@ export default function UploadNotes() {
       {loading && (
         <div style={{background:'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',borderRadius:'12px',padding:'1.5rem',color:'white',marginBottom:'1.5rem',textAlign:'center'}}>
           <div style={{fontSize:'2rem',marginBottom:'0.5rem'}}>⏳</div>
-          <p style={{margin:0,fontWeight:'bold'}}>Extracting text from PDF... Please wait.</p>
+          <p style={{margin:0,fontWeight:'bold'}}>Extracting text from PDF...</p>
+          <p style={{margin:'0.5rem 0 0 0',fontSize:'0.875rem',opacity:0.9}}>This may take a moment for scanned PDFs</p>
         </div>
       )}
 
@@ -213,7 +144,7 @@ export default function UploadNotes() {
             setErrorMessage("");
           }}
           disabled={loading}
-          style={{width:'100%',padding:'1rem',border:'2px solid #e2e8f0',borderRadius:'12px',fontSize:'0.95rem',fontFamily:'inherit',resize:'vertical',transition:'border-color 0.2s'}}
+          style={{width:'100%',padding:'1rem',border:'2px solid #e2e8f0',borderRadius:'12px',fontSize:'0.95rem',fontFamily:'inherit',resize:'vertical',transition:'border-color 0.2s',boxSizing:'border-box'}}
           onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
           onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
         />
@@ -224,13 +155,14 @@ export default function UploadNotes() {
         <label style={{display:'block',marginBottom:'0.75rem',fontWeight:'600',color:'#334155',fontSize:'0.875rem'}}>📎 Or Upload a File</label>
         <input
           type="file"
+          accept=".pdf,.docx,.txt,.md,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.html,.css,.json,.xml,.csv,.log,.sh,.bat,.sql,.r,.swift,.go,.rs,.php,.rb,.kt,.scala"
           onChange={handleFileUpload}
           disabled={loading}
-          style={{width:'100%',padding:'0.75rem',border:'2px dashed #cbd5e1',borderRadius:'12px',cursor:'pointer',background:'#f8fafc',transition:'all 0.2s'}}
+          style={{width:'100%',padding:'0.75rem',border:'2px dashed #cbd5e1',borderRadius:'12px',cursor:'pointer',background:'#f8fafc',transition:'all 0.2s',boxSizing:'border-box'}}
           onMouseEnter={(e) => {e.target.style.borderColor = '#3b82f6'; e.target.style.background = '#eff6ff';}}
           onMouseLeave={(e) => {e.target.style.borderColor = '#cbd5e1'; e.target.style.background = '#f8fafc';}}
         />
-        <div style={{marginTop:'0.5rem',fontSize:'0.75rem',color:'#64748b'}}>Supports: PDF, TXT, MD, DOC, code files, and more</div>
+        <div style={{marginTop:'0.5rem',fontSize:'0.75rem',color:'#64748b'}}>Supports: PDF, Word (.docx), TXT, MD, and code files (.js, .py, .java, .html, etc.)</div>
       </div>
 
       <div style={{marginBottom:'1.5rem'}}>
@@ -239,7 +171,7 @@ export default function UploadNotes() {
           value={difficulty}
           onChange={(e) => setDifficulty(e.target.value)}
           disabled={loading}
-          style={{width:'100%',padding:'0.875rem',border:'2px solid #e2e8f0',borderRadius:'12px',fontSize:'0.95rem',cursor:'pointer',background:'white',fontWeight:'500',transition:'border-color 0.2s'}}
+          style={{width:'100%',padding:'0.875rem',border:'2px solid #e2e8f0',borderRadius:'12px',fontSize:'0.95rem',cursor:'pointer',background:'white',fontWeight:'500',transition:'border-color 0.2s',boxSizing:'border-box'}}
           onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
           onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
         >
@@ -253,11 +185,15 @@ export default function UploadNotes() {
         <div style={{display:'flex',gap:'0.75rem'}}>
           <span style={{fontSize:'1.5rem'}}>💡</span>
           <div style={{fontSize:'0.875rem',color:'#1e40af',lineHeight:'1.6'}}>
-            <strong style={{display:'block',marginBottom:'0.5rem'}}>Tips for Best Results:</strong>
-            • PDFs are automatically processed<br />
-            • If PDF fails: Copy text manually (Ctrl+A, Ctrl+C) and paste above<br />
-            • Minimum 200 words recommended for quality questions<br />
-            • Supports: PDF, TXT, MD, code files, and more
+            <strong style={{display:'block',marginBottom:'0.5rem'}}>How to Add Your Notes:</strong>
+            <strong>From PDF/Word (.docx):</strong><br />
+            1. Open your file<br />
+            2. Select All (Ctrl+A or Cmd+A)<br />
+            3. Copy (Ctrl+C or Cmd+C)<br />
+            4. Paste above (Ctrl+V or Cmd+V)<br />
+            <br />
+            <strong>From Text Files:</strong> Use the upload button<br />
+            <strong>Tip:</strong> 200+ words recommended for best quiz quality
           </div>
         </div>
       </div>
@@ -265,11 +201,11 @@ export default function UploadNotes() {
       <button 
         onClick={handleSubmit} 
         disabled={loading || !notes.trim()}
-        style={{width:'100%',padding:'1rem 2rem',background:loading||!notes.trim()?'#cbd5e1':'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',color:'white',border:'none',borderRadius:'12px',fontSize:'1.125rem',fontWeight:'bold',cursor:loading||!notes.trim()?'not-allowed':'pointer',boxShadow:'0 4px 12px rgba(102,126,234,0.4)',transition:'transform 0.2s'}}
+        style={{width:'100%',padding:'1rem 2rem',background:loading||!notes.trim()?'#cbd5e1':'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',color:'white',border:'none',borderRadius:'12px',fontSize:'1.125rem',fontWeight:'bold',cursor:loading||!notes.trim()?'not-allowed':'pointer',boxShadow:'0 4px 12px rgba(102,126,234,0.4)',transition:'transform 0.2s',boxSizing:'border-box'}}
         onMouseEnter={(e) => !loading && notes.trim() && (e.target.style.transform = 'translateY(-2px)')}
         onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
       >
-        {loading ? '⏳ Processing...' : '✨ Generate 20-Question Quiz'}
+        {loading ? '⏳ Processing...' : 'Submit Notes'}
       </button>
       </div>
     </div>

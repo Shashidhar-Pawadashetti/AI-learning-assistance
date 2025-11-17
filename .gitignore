@@ -5,19 +5,21 @@ backend/node_modules/
 
 # Environment variables
 .env
+.env.local
+.env.production
 backend/.env
 frontend/.env
-frontend/.env.local
 
-# Build files
+# Build outputs
 frontend/dist/
 frontend/build/
+backend/dist/
 
 # Logs
 *.log
 npm-debug.log*
-logs/
-backend/logs/
+yarn-debug.log*
+yarn-error.log*
 
 # OS files
 .DS_Store
@@ -26,3 +28,10 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+temp/
+tmp/

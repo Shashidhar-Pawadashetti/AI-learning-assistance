@@ -51,6 +51,7 @@ export default function Quiz() {
   const [submitted, setSubmitted] = useState(false);
   const [quizName, setQuizName] = useState("");
   const [quizTopic, setQuizTopic] = useState("");
+  const [numQuestions, setNumQuestions] = useState(20);
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [viewAttempt, setViewAttempt] = useState(null);
@@ -132,9 +133,7 @@ export default function Quiz() {
 
     const shouldGenerate = localStorage.getItem('shouldGenerateQuiz');
     if (shouldGenerate === 'true') {
-      localStorage.removeItem('shouldGenerateQuiz');
       setShowHistory(false);
-      generateQuiz();
     }
   }, []);
 
@@ -367,25 +366,26 @@ export default function Quiz() {
   };
 
   // Component: Question Review Item
-  const QuestionReviewItem = ({ q, idx, userAnswer, isCorrect, explanation }) => {
-    const correctAnswer = q.a;
+  const QuestionReviewItem = ({ q, idx, userAnswer, isCorrect, explanation, partialMarks }) => {
+    const correctAnswers = q.correctAnswers || [q.a];
+    const userAnswers = Array.isArray(userAnswer) ? userAnswer : (userAnswer ? [userAnswer] : []);
     return (
       <div style={{
         marginBottom: 12,
         padding: '10px',
         borderRadius: '8px',
-        border: `2px solid ${isCorrect ? '#22c55e' : '#ef4444'}`,
-        backgroundColor: isCorrect ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)'
+        border: `2px solid ${isCorrect ? '#22c55e' : partialMarks > 0 ? '#f59e0b' : '#ef4444'}`,
+        backgroundColor: isCorrect ? 'rgba(34,197,94,0.08)' : partialMarks > 0 ? 'rgba(245,158,11,0.08)' : 'rgba(239,68,68,0.08)'
       }}>
         <p style={{ fontWeight: 'bold', marginBottom: 6 }}>Q{idx + 1}. {q.q}</p>
-        <p style={{ color: isCorrect ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
-          {isCorrect ? '✅ Correct' : '❌ Incorrect'}
+        <p style={{ color: isCorrect ? '#16a34a' : partialMarks > 0 ? '#d97706' : '#dc2626', fontWeight: 'bold' }}>
+          {isCorrect ? '✅ Fully Correct' : partialMarks > 0 ? `⚠️ Partial (${partialMarks.toFixed(2)} marks)` : '❌ Incorrect'}
         </p>
-        {!isCorrect && userAnswer && (
-          <p style={{ marginTop: 4, color: '#dc2626' }}>Your answer: {userAnswer}</p>
+        {userAnswers.length > 0 && (
+          <p style={{ marginTop: 4, color: '#334155' }}>Your answers: {userAnswers.join(', ')}</p>
         )}
-        <p style={{ marginTop: 4, color: '#16a34a', fontWeight: 'bold' }}>Correct answer: {correctAnswer}</p>
-        {!isCorrect && explanation && (
+        <p style={{ marginTop: 4, color: '#16a34a', fontWeight: 'bold' }}>Correct answers: {correctAnswers.join(', ')}</p>
+        {explanation && (
           <div style={{ marginTop: 8, padding: '8px', background: 'rgba(255,255,255,0.5)', borderRadius: 6, fontSize: 14, color: '#334155' }}>
             <strong>Explanation:</strong> {explanation}
           </div>
@@ -453,15 +453,18 @@ export default function Quiz() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ notes, level: difficulty })
+        body: JSON.stringify({ notes, level: difficulty, numQuestions })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate quiz");
-      const merged = [
-        ...(data.blanks || []).map(b => ({ type: "blank", q: b.q, a: b.a })),
-        ...(data.mcq || []).map(m => ({ type: "mcq", q: m.q, options: m.options, a: m.a }))
-      ];
-      setQuestions(merged);
+      const questions = (data.questions || []).map(q => ({
+        type: q.type || "mcq",
+        q: q.q,
+        options: q.options,
+        correctAnswers: q.correctAnswers,
+        a: q.correctAnswers?.[0]
+      }));
+      setQuestions(questions);
       setAnswers({});
       setScore(null);
       setAnalysis(null);
@@ -505,21 +508,15 @@ export default function Quiz() {
         </p>
       </div>
 
-      {/* Quick Stats */}
-      {headerStats && (
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'1rem',marginBottom:'2rem'}}>
-          <StatCard icon="📊" label="Total Attempts" value={headerStats.attempts} color="#3b82f6" />
-          <StatCard icon="🏆" label="Best Score" value={`${headerStats.best}%`} color="#f59e0b" />
-          <StatCard icon="📈" label="Average" value={`${headerStats.avg}%`} color="#8b5cf6" />
-          <StatCard icon="⏱️" label="Timed Quizzes" value={headerStats.timedCount} color="#ef4444" />
+
+
+      {/* Action Buttons - Hide during quiz attempt */}
+      {(!started || submitted) && (
+        <div style={{display:'flex',gap:'1rem',marginBottom:'2rem',flexWrap:'wrap'}}>
+          <button className="btn" onClick={() => setShowHistory(true)} style={{flex:'1 1 200px',padding:'0.75rem 1.5rem'}}>📜 View History</button>
+          <button className="btn success" onClick={handleStartNewQuiz} style={{flex:'1 1 200px',padding:'0.75rem 1.5rem'}}>✨ Start New Quiz</button>
         </div>
       )}
-
-      {/* Action Buttons */}
-      <div style={{display:'flex',gap:'1rem',marginBottom:'2rem',flexWrap:'wrap'}}>
-        <button className="btn" onClick={() => setShowHistory(true)} style={{flex:'1 1 200px',padding:'0.75rem 1.5rem'}}>📜 View History</button>
-        <button className="btn success" onClick={handleStartNewQuiz} style={{flex:'1 1 200px',padding:'0.75rem 1.5rem'}}>✨ Start New Quiz</button>
-      </div>
 
       {/* History Panel */}
       {showHistory && (
@@ -714,7 +711,8 @@ export default function Quiz() {
                   q={q}
                   idx={idx}
                   userAnswer={viewAttempt.answers?.[idx] ?? null}
-                  isCorrect={viewAttempt.breakdown?.[idx]?.correct ?? (viewAttempt.answers?.[idx] === q.a)}
+                  isCorrect={viewAttempt.breakdown?.[idx]?.correct ?? false}
+                  partialMarks={viewAttempt.breakdown?.[idx]?.marks ?? 0}
                   explanation={viewAttempt.breakdown?.[idx]?.explanation || ''}
                 />
               ))}
@@ -751,27 +749,23 @@ export default function Quiz() {
             </div>
           )}
 
-          {!started && questions.length === 0 && (
+
+
+          {!started && questions.length === 0 && localStorage.getItem('shouldGenerateQuiz') === 'true' && (
             <div style={{background:'#f8fafc',borderRadius:'12px',padding:'1.5rem',border:'1px solid #e2e8f0',marginBottom:'1.5rem'}}>
-              <p style={{ marginBottom: 12 }}>Name your quiz and set a topic (optional):</p>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <p style={{marginBottom:'0.75rem',fontWeight:'600',color:'#334155'}}>Number of Questions:</p>
+              <div style={{display:'flex',gap:'1rem',alignItems:'center',marginBottom:'1rem'}}>
                 <input
-                  className="file-input"
-                  placeholder="Quiz name (e.g., Chapter 3 Practice)"
-                  value={quizName}
-                  onChange={(e) => setQuizName(e.target.value)}
-                  style={{ minWidth: 220 }}
+                  type="number"
+                  min="10"
+                  max="50"
+                  value={numQuestions}
+                  onChange={(e) => setNumQuestions(Math.max(10, Math.min(50, parseInt(e.target.value) || 10)))}
+                  style={{width:'100px',padding:'0.5rem',border:'2px solid #e2e8f0',borderRadius:'8px',fontSize:'1rem',fontWeight:'500'}}
                 />
-                <input
-                  className="file-input"
-                  placeholder="Topic (e.g., Algebra, Biology)"
-                  value={quizTopic}
-                  onChange={(e) => setQuizTopic(e.target.value)}
-                  style={{ minWidth: 200 }}
-                />
-                <button className="btn" onClick={generateQuiz}>Generate 20-Question Quiz</button>
+                <span style={{color:'#64748b',fontSize:'0.875rem'}}>Min: 10, Max: 50</span>
               </div>
-              <p style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>Note: Quiz is generated from your latest uploaded notes.</p>
+              <button className="btn" onClick={() => { localStorage.removeItem('shouldGenerateQuiz'); generateQuiz(); }} style={{width:'100%'}}>Start Quiz</button>
             </div>
           )}
 
@@ -786,7 +780,7 @@ export default function Quiz() {
             </div>
           )}
 
-          {loading && <p>Generating your 20-question quiz… This may take up to 90 seconds.</p>}
+
           {error && <p style={{ color: 'red' }}>{error}</p>}
           {!loading && questions.length === 0 && started === false ? null : (
             started && !submitted && questions.map((item, idx) => (
@@ -795,49 +789,48 @@ export default function Quiz() {
                   <strong>Q{idx + 1}.</strong> {item.q}
                 </p>
 
-                {item.type === "blank" && (
-                  <input
-                    type="text"
-                    className="file-input"
-                    placeholder="Your answer..."
-                    value={answers[idx] || ""}
-                    onChange={(e) => setAnswer(idx, e.target.value)}
-                    disabled={submitted}
-                  />
-                )}
-
                 {item.type === "mcq" && (
-                  <ul>
+                  <ul style={{listStyle:'none',padding:0}}>
                     {item.options.map((opt, i) => {
                       const isSelected = answers[idx] === opt;
-                      const finalClass = submitted
-                        ? `option ${isSelected ? 'selected' : ''}`
-                        : `option ${isSelected ? 'selected' : ''}`;
                       return (
                         <li
                           key={i}
-                          className={finalClass}
                           onClick={() => !submitted && setAnswer(idx, opt)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              if (!submitted) setAnswer(idx, opt);
-                            } else if (e.key === 'ArrowDown' && i < item.options.length - 1) {
-                              e.preventDefault();
-                              e.currentTarget.nextElementSibling?.focus();
-                            } else if (e.key === 'ArrowUp' && i > 0) {
-                              e.preventDefault();
-                              e.currentTarget.previousElementSibling?.focus();
-                            }
-                          }}
+                          style={{padding:'0.75rem',marginBottom:'0.5rem',border:'2px solid',borderColor:isSelected?'#3b82f6':'#e2e8f0',borderRadius:'8px',cursor:submitted?'default':'pointer',background:isSelected?'#eff6ff':'white',transition:'all 0.2s'}}
                         >
                           {opt}
                         </li>
                       );
                     })}
                   </ul>
+                )}
+
+                {item.type === "multiselect" && (
+                  <div>
+                    <p style={{fontSize:'0.875rem',color:'#64748b',marginBottom:'0.5rem'}}>Select all correct answers (2-3 correct)</p>
+                    {item.options.map((opt, i) => {
+                      const selected = answers[idx] || [];
+                      const isChecked = selected.includes(opt);
+                      return (
+                        <label key={i} style={{display:'flex',alignItems:'center',padding:'0.75rem',border:'2px solid #e2e8f0',borderRadius:'8px',marginBottom:'0.5rem',cursor:'pointer',background:isChecked?'#eff6ff':'white',borderColor:isChecked?'#3b82f6':'#e2e8f0',transition:'all 0.2s'}}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              if (submitted) return;
+                              const current = answers[idx] || [];
+                              const updated = isChecked ? current.filter(a => a !== opt) : [...current, opt];
+                              setAnswer(idx, updated);
+                            }}
+                            disabled={submitted}
+                            style={{marginRight:'0.75rem',width:'18px',height:'18px',cursor:'pointer'}}
+                          />
+                          <span style={{flex:1,color:'#334155'}}>{opt}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             ))
@@ -887,6 +880,7 @@ export default function Quiz() {
                     idx={idx}
                     userAnswer={answers[idx] ?? null}
                     isCorrect={analysis?.breakdown?.[idx]?.correct ?? false}
+                    partialMarks={analysis?.breakdown?.[idx]?.marks ?? 0}
                     explanation={analysis?.breakdown?.[idx]?.explanation || ''}
                   />
                 ))}

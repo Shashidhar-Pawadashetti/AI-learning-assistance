@@ -35,7 +35,7 @@ export default function Navbar() {
 
   return (
     <nav className="navbar">
-      <h1 className="logo">AI Learning Assistant</h1>
+      <h1 className="logo">Study Buddy</h1>
       <div className="nav-links">
         <Link to="/">Home</Link>
         <Link to="/upload">Upload Notes</Link>
