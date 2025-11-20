@@ -1,19 +1,6 @@
-import express from 'express';
-import mongoose from 'mongoose';
-import cors from 'cors';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
-import nodemailer from 'nodemailer';
-import multer from 'multer';
-import rateLimit from 'express-rate-limit';
-import User from './models/User.js';
-import { authMiddleware } from './middleware/auth.js';
-
-dotenv.config();
 
 // Validate critical environment variables on startup
-const requiredEnvVars = ['MONGO_URI', 'JWT_SECRET', 'EMAIL_USER', 'EMAIL_PASS'];
+const requiredEnvVars = ['MONGO_URI', 'JWT_SECRET', 'SENDGRID_API_KEY', 'SENDGRID_FROM_EMAIL'];
 const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
 if (missingEnvVars.length > 0) {
   console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
@@ -79,40 +66,33 @@ const upload = multer({
 // Structure: { email: { code: '123456', expiresAt: timestamp } }
 const verificationCodes = {};
 
-// --- Nodemailer Transport Setup ---
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER, // Your Gmail address
-    pass: process.env.EMAIL_PASS  // App password (not your Gmail password)
-  }
-});
+// --- SendGrid Setup ---
+sgMail.setApiKey(process.env.SENDGRID_API_KEY || '');
 
-// --- Send Verification Code Endpoint ---
-app.post('/api/send-verification-code', emailLimiter, async (req, res) => {
-  const { email } = req.body;
+verificationCodes[email] = { code, expiresAt };
+try {
+  const msg = {
+    to: email,
+    from: process.env.SENDGRID_FROM_EMAIL,
+    subject: 'AI Learning Assistant - Verification Code',
+    text: `Your verification code is: ${code}`,
+    html: `<div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
+        <h2 style="color: #667eea;">AI Learning Assistant</h2>
+        <p>Your verification code is:</p>
+        <div style="background: #f8fafc; padding: 15px; border-radius: 8px; font-size: 24px; font-weight: bold; text-align: center; color: #667eea; letter-spacing: 2px;">
+          ${code}
+        </div>
+        <p style="color: #64748b; margin-top: 15px;">This code will expire in 10 minutes.</p>
+        <p style="color: #64748b;">If you didn't request this code, please ignore this email.</p>
+      </div>`
+  };
 
-  // Proper email validation using regex
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!email || !emailRegex.test(email)) {
-    return res.status(400).json({ error: 'Invalid email address.' });
-  }
-  // Generate 6-digit code with 10-minute expiration
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = Date.now() + (10 * 60 * 1000); // 10 minutes from now
-  verificationCodes[email] = { code, expiresAt };
-  try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'Your Verification Code',
-      text: `Your verification code is: ${code}`
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Email send error:', err);
-    res.status(500).json({ error: 'Failed to send verification email.' });
-  }
+  await sgMail.send(msg);
+  res.json({ success: true });
+} catch (err) {
+  console.error('SendGrid email error:', err);
+  res.status(500).json({ error: 'Failed to send verification email.' });
+}
 });
 
 // --- Verify Code Endpoint ---

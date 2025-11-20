@@ -43,10 +43,4 @@ const userSchema = new mongoose.Schema({
   }]
 }, { timestamps: true });
 
-// Add indexes for better query performance
-userSchema.index({ email: 1 });
-userSchema.index({ firebaseUid: 1 });
-userSchema.index({ level: -1 });
-userSchema.index({ 'stats.totalQuizzes': -1 });
-
 export default mongoose.model('User', userSchema);
