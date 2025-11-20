@@ -1,4 +1,6 @@
 import admin from 'firebase-admin';
+import jwt from 'jsonwebtoken';
+import User from '../models/User.js';
 
 let firebaseInitialized = false;
 
@@ -46,8 +48,25 @@ export const authMiddleware = async (req, res, next) => {
 
     const token = authHeader.split('Bearer ')[1];
     
+    // Try JWT first (for regular signup/login)
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.id);
+      if (user) {
+        req.user = {
+          uid: user.firebaseUid || user._id.toString(),
+          email: user.email,
+          userId: user._id
+        };
+        return next();
+      }
+    } catch (jwtError) {
+      // JWT failed, try Firebase
+    }
+    
+    // Try Firebase token
     if (!firebaseInitialized && !initializeFirebase()) {
-      return res.status(500).json({ error: 'Server authentication not configured' });
+      return res.status(401).json({ error: 'Unauthorized - Invalid token' });
     }
 
     const decodedToken = await admin.auth().verifyIdToken(token);

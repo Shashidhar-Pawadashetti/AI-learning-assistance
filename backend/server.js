@@ -497,15 +497,23 @@ ${JSON.stringify(compact)}
 app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
   try {
     const { attempt } = req.body;
-    const uid = req.user.uid;
 
-    let user = await User.findOne({ firebaseUid: uid });
+    let user;
+    
+    if (req.user.userId) {
+      user = await User.findById(req.user.userId);
+    }
+    
+    if (!user && req.user.uid) {
+      user = await User.findOne({ firebaseUid: req.user.uid });
+    }
+    
     if (!user) {
       user = await User.create({
         name: req.user.email.split('@')[0],
         email: req.user.email,
         password: 'firebase-auth',
-        firebaseUid: uid,
+        firebaseUid: req.user.uid,
         quizHistory: [],
         stats: {}
       });
@@ -650,15 +658,22 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
 // --- Get Quiz History ---
 app.get('/api/quiz-history', authMiddleware, async (req, res) => {
   try {
-    const uid = req.user.uid;
-    let user = await User.findOne({ firebaseUid: uid });
+    let user;
+    
+    if (req.user.userId) {
+      user = await User.findById(req.user.userId);
+    }
+    
+    if (!user && req.user.uid) {
+      user = await User.findOne({ firebaseUid: req.user.uid });
+    }
 
     if (!user) {
       user = await User.create({
         name: req.user.email.split('@')[0],
         email: req.user.email,
         password: 'firebase-auth',
-        firebaseUid: uid,
+        firebaseUid: req.user.uid,
         quizHistory: [],
         stats: {}
       });
@@ -674,15 +689,24 @@ app.get('/api/quiz-history', authMiddleware, async (req, res) => {
 // --- Get User Stats ---
 app.get('/api/user-stats', authMiddleware, async (req, res) => {
   try {
-    const uid = req.user.uid;
-    let user = await User.findOne({ firebaseUid: uid });
+    let user;
+    
+    // Try to find by userId first (JWT auth)
+    if (req.user.userId) {
+      user = await User.findById(req.user.userId);
+    }
+    
+    // Try to find by firebaseUid (Firebase auth)
+    if (!user && req.user.uid) {
+      user = await User.findOne({ firebaseUid: req.user.uid });
+    }
 
     if (!user) {
       user = await User.create({
         name: req.user.email.split('@')[0],
         email: req.user.email,
         password: 'firebase-auth',
-        firebaseUid: uid,
+        firebaseUid: req.user.uid,
         stats: {}
       });
     }
