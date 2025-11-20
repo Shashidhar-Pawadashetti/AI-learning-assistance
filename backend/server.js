@@ -6,10 +6,25 @@ import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import User from './models/User.js';
 import { authMiddleware } from './middleware/auth.js';
 
 dotenv.config();
+
+// Validate critical environment variables on startup
+const requiredEnvVars = ['MONGO_URI', 'JWT_SECRET', 'EMAIL_USER', 'EMAIL_PASS'];
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+if (missingEnvVars.length > 0) {
+  console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
+  console.error('   Please create a .env file in the backend directory. See .env.example for reference.');
+  process.exit(1);
+}
+
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  console.error('❌ JWT_SECRET must be at least 32 characters long for security.');
+  process.exit(1);
+}
 
 const app = express();
 
@@ -20,14 +35,48 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// Rate limiting configurations
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 requests per windowMs
+  message: { error: 'Too many authentication attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const emailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // 3 emails per hour
+  message: { error: 'Too many verification emails sent. Please try again in 1 hour.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const quizLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // 10 quiz generations per minute
+  message: { error: 'Too many quiz requests. Please wait a moment before generating another quiz.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const chatbotLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute  
+  max: 20, // 20 messages per minute
+  message: { error: 'Too many messages. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Multer configuration for file uploads
 const storage = multer.memoryStorage();
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
 // --- Email Verification Code Store (in-memory, for demo) ---
+// Structure: { email: { code: '123456', expiresAt: timestamp } }
 const verificationCodes = {};
 
 // --- Nodemailer Transport Setup ---
@@ -40,14 +89,18 @@ const transporter = nodemailer.createTransport({
 });
 
 // --- Send Verification Code Endpoint ---
-app.post('/api/send-verification-code', async (req, res) => {
+app.post('/api/send-verification-code', emailLimiter, async (req, res) => {
   const { email } = req.body;
-  if (!email || !email.includes('@gmail.com')) {
+
+  // Proper email validation using regex
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || !emailRegex.test(email)) {
     return res.status(400).json({ error: 'Invalid email address.' });
   }
-  // Generate 6-digit code
+  // Generate 6-digit code with 10-minute expiration
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  verificationCodes[email] = code;
+  const expiresAt = Date.now() + (10 * 60 * 1000); // 10 minutes from now
+  verificationCodes[email] = { code, expiresAt };
   try {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
@@ -68,8 +121,21 @@ app.post('/api/verify-code', (req, res) => {
   if (!email || !code) {
     return res.status(400).json({ error: 'Email and code required.' });
   }
-  if (verificationCodes[email] === code) {
-    delete verificationCodes[email]; // Remove after verification
+
+  const stored = verificationCodes[email];
+  if (!stored) {
+    return res.status(400).json({ error: 'No verification code found. Please request a new code.' });
+  }
+
+  // Check if code has expired
+  if (Date.now() > stored.expiresAt) {
+    delete verificationCodes[email];
+    return res.status(400).json({ error: 'Verification code has expired. Please request a new code.' });
+  }
+
+  // Check if code matches
+  if (stored.code === code) {
+    delete verificationCodes[email]; // Remove after successful verification
     res.json({ success: true });
   } else {
     res.status(400).json({ error: 'Invalid code.' });
@@ -80,7 +146,7 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
 
-app.post('/api/signup', async (req, res) => {
+app.post('/api/signup', authLimiter, async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -107,7 +173,7 @@ app.post('/api/signup', async (req, res) => {
   }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -137,7 +203,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 // --- Quiz Generation using Hugging Face Inference API ---
-app.post('/api/generate-quiz', authMiddleware, async (req, res) => {
+app.post('/api/generate-quiz', quizLimiter, authMiddleware, async (req, res) => {
   try {
     const { notes, level = 'medium', numQuestions = 20 } = req.body || {};
     if (!notes || notes.trim().length < 20) {
@@ -352,9 +418,9 @@ app.post('/api/analyze-quiz', authMiddleware, async (req, res) => {
       const userAnswer = answers?.[i];
       const correctAnswers = q?.correctAnswers || [];
       const questionType = q?.type || 'mcq';
-      
+
       let marks = 0;
-      
+
       if (questionType === 'mcq') {
         // Single answer MCQ
         marks = userAnswer === correctAnswers[0] ? 1 : 0;
@@ -364,7 +430,7 @@ app.post('/api/analyze-quiz', authMiddleware, async (req, res) => {
         if (userAnswers.length > 0) {
           const correctSelected = userAnswers.filter(ans => correctAnswers.includes(ans)).length;
           const incorrectSelected = userAnswers.filter(ans => !correctAnswers.includes(ans)).length;
-          
+
           if (incorrectSelected > 0) {
             marks = 0;
           } else if (correctSelected === correctAnswers.length) {
@@ -374,14 +440,14 @@ app.post('/api/analyze-quiz', authMiddleware, async (req, res) => {
           }
         }
       }
-      
+
       score += marks;
-      return { 
-        index: i, 
+      return {
+        index: i,
         marks,
         correct: marks === 1,
-        yourAnswer: userAnswer, 
-        correctAnswer: correctAnswers 
+        yourAnswer: userAnswer,
+        correctAnswer: correctAnswers
       };
     });
 
@@ -503,33 +569,33 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
 
     // Handle new quiz submission
     user.quizHistory = user.quizHistory || [];
-    const isDuplicate = user.quizHistory.some(h => 
-      Math.abs(h.createdAt - attempt.createdAt) < 1000 && 
-      h.score === attempt.score && 
+    const isDuplicate = user.quizHistory.some(h =>
+      Math.abs(h.createdAt - attempt.createdAt) < 1000 &&
+      h.score === attempt.score &&
       h.total === attempt.total
     );
-    
+
     if (!isDuplicate) {
       // Calculate XP with bonuses
       let baseXP = attempt.score * 10;
       let bonusXP = 0;
-      
+
       // Difficulty bonus
       if (attempt.difficulty === 'hard') bonusXP += Math.floor(baseXP * 0.5);
       else if (attempt.difficulty === 'medium') bonusXP += Math.floor(baseXP * 0.25);
-      
+
       // Timed bonus
       if (attempt.timed) bonusXP += Math.floor(baseXP * 0.25);
-      
+
       // Perfect score bonus
       if (attempt.percent === 100) bonusXP += 100;
-      
+
       // Streak bonus
       const today = new Date().toDateString();
       const lastDate = user.stats?.lastQuizDate || '';
       const yesterday = new Date(Date.now() - 86400000).toDateString();
       let streakIncreased = false;
-      
+
       if (lastDate === today) {
         // Same day, no streak change
       } else if (lastDate === yesterday) {
@@ -539,19 +605,19 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
       } else {
         user.stats.currentStreak = 1;
       }
-      
+
       user.stats.lastQuizDate = today;
       user.stats.longestStreak = Math.max(user.stats.longestStreak || 0, user.stats.currentStreak || 0);
-      
+
       const totalXP = baseXP + bonusXP;
       user.xp += totalXP;
-      
+
       // Level up
       while (user.xp >= user.level * 100) {
         user.xp -= user.level * 100;
         user.level += 1;
       }
-      
+
       // Update stats
       user.stats.totalQuizzes = (user.stats.totalQuizzes || 0) + 1;
       user.stats.totalCorrect = (user.stats.totalCorrect || 0) + attempt.score;
@@ -559,10 +625,10 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
       user.stats.totalTimeSpent = (user.stats.totalTimeSpent || 0) + (attempt.elapsedSeconds || 0);
       user.stats.bestScore = Math.max(user.stats.bestScore || 0, attempt.percent);
       user.stats.averageScore = Math.round((user.stats.totalCorrect / user.stats.totalQuestions) * 100);
-      
+
       if (attempt.timed) user.stats.timedQuizzes = (user.stats.timedQuizzes || 0) + 1;
       if (attempt.percent === 100) user.stats.perfectScores = (user.stats.perfectScores || 0) + 1;
-      
+
       // Topic stats
       const topic = attempt.topic || 'General';
       const topicStats = user.stats.topicStats || new Map();
@@ -573,7 +639,7 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
       current.avgScore = Math.round(current.totalScore / current.count);
       topicStats.set(topic, current);
       user.stats.topicStats = topicStats;
-      
+
       // Check and unlock badges
       const newBadges = [];
       const badgeChecks = [
@@ -597,7 +663,7 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
         { key: 'level_25', condition: user.level >= 25 },
         { key: 'level_50', condition: user.level >= 50 }
       ];
-      
+
       user.badges = user.badges || [];
       badgeChecks.forEach(check => {
         if (check.condition && !user.badges.find(b => b.key === check.key)) {
@@ -606,13 +672,13 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
           user.xp += 50; // Badge bonus XP
         }
       });
-      
+
       user.quizHistory.unshift(attempt);
       user.quizHistory = user.quizHistory.slice(0, 50);
       await user.save();
-      
-      res.json({ 
-        success: true, 
+
+      res.json({
+        success: true,
         history: user.quizHistory,
         user: { xp: user.xp, level: user.level, stats: user.stats, badges: user.badges },
         xpGained: totalXP,
@@ -635,7 +701,7 @@ app.get('/api/quiz-history', authMiddleware, async (req, res) => {
   try {
     const uid = req.user.uid;
     let user = await User.findOne({ firebaseUid: uid });
-    
+
     if (!user) {
       user = await User.create({
         name: req.user.email.split('@')[0],
@@ -646,7 +712,7 @@ app.get('/api/quiz-history', authMiddleware, async (req, res) => {
         stats: {}
       });
     }
-    
+
     res.json({ history: user.quizHistory || [] });
   } catch (error) {
     console.error('Get quiz history error:', error);
@@ -659,7 +725,7 @@ app.get('/api/user-stats', authMiddleware, async (req, res) => {
   try {
     const uid = req.user.uid;
     let user = await User.findOne({ firebaseUid: uid });
-    
+
     if (!user) {
       user = await User.create({
         name: req.user.email.split('@')[0],
@@ -669,8 +735,8 @@ app.get('/api/user-stats', authMiddleware, async (req, res) => {
         stats: {}
       });
     }
-    
-    res.json({ 
+
+    res.json({
       xp: user.xp || 0,
       level: user.level || 1,
       stats: user.stats || {},
@@ -700,7 +766,7 @@ app.post('/api/extract-pdf', upload.single('file'), async (req, res) => {
         const mammoth = await import('mammoth');
         const result = await mammoth.extractRawText({ buffer: req.file.buffer });
         const text = result.value.trim();
-        
+
         if (text && text.length >= 50) {
           console.log(`✓ Extracted ${text.length} characters from Word`);
           return res.json({ text, method: 'word' });
@@ -731,8 +797,8 @@ app.post('/api/extract-pdf', upload.single('file'), async (req, res) => {
         return res.json({ text, method: 'text' });
       }
 
-      return res.status(400).json({ 
-        error: 'Could not extract text. This may be a scanned PDF. Please copy text manually.' 
+      return res.status(400).json({
+        error: 'Could not extract text. This may be a scanned PDF. Please copy text manually.'
       });
     }
 
@@ -745,7 +811,7 @@ app.post('/api/extract-pdf', upload.single('file'), async (req, res) => {
 });
 
 // --- Chatbot Endpoint ---
-app.post('/api/chatbot', async (req, res) => {
+app.post('/api/chatbot', chatbotLimiter, async (req, res) => {
   try {
     const { message, context = '' } = req.body;
     if (!message || message.trim().length === 0) {
@@ -753,60 +819,60 @@ app.post('/api/chatbot', async (req, res) => {
     }
 
     console.log('Chatbot request:', { message: message.substring(0, 100) });
-    
+
     const hfApiKey = process.env.HF_API_KEY;
     const model = process.env.HF_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
-    
+
     console.log('HF_API_KEY available:', !!hfApiKey);
-    
+
     // Enhanced fallback function
     const getFallbackResponse = (msg) => {
       const lowerMessage = msg.toLowerCase();
-      
+
       if (lowerMessage.includes('study better') || lowerMessage.includes('how to study')) {
         return "Here are proven study techniques: 1) Use active recall - test yourself frequently, 2) Space out your learning sessions, 3) Break topics into smaller chunks, 4) Teach concepts to others, 5) Use multiple senses (visual, auditory), 6) Take regular breaks, 7) Create a distraction-free environment. What subject are you studying?";
       }
-      
+
       if (lowerMessage.includes('quiz') || lowerMessage.includes('test') || lowerMessage.includes('exam')) {
         return "For effective test preparation: 1) Upload your notes to generate practice quizzes, 2) Review mistakes carefully, 3) Practice under timed conditions, 4) Focus on weak areas, 5) Get enough sleep before exams. Need help with a specific subject?";
       }
-      
+
       if (lowerMessage.includes('math') || lowerMessage.includes('mathematics')) {
         return "Math study tips: 1) Practice problems daily, 2) Understand concepts before memorizing formulas, 3) Work through examples step-by-step, 4) Identify your mistake patterns, 5) Use visual aids for complex problems. What math topic are you working on?";
       }
-      
+
       if (lowerMessage.includes('science') || lowerMessage.includes('physics') || lowerMessage.includes('chemistry') || lowerMessage.includes('biology')) {
         return "Science learning strategies: 1) Connect theory to real-world examples, 2) Use diagrams and flowcharts, 3) Practice lab procedures mentally, 4) Explain processes in your own words, 5) Form study groups for discussions. Which science subject interests you?";
       }
-      
+
       if (lowerMessage.includes('memory') || lowerMessage.includes('remember') || lowerMessage.includes('memorize')) {
         return "Memory enhancement techniques: 1) Use mnemonics and acronyms, 2) Create mental associations, 3) Review material before sleeping, 4) Use the method of loci, 5) Practice retrieval regularly. What do you need help remembering?";
       }
-      
+
       if (lowerMessage.includes('motivation') || lowerMessage.includes('procrastination')) {
         return "Stay motivated with these tips: 1) Set small, achievable goals, 2) Reward yourself for progress, 3) Find your peak energy hours, 4) Use the Pomodoro technique, 5) Connect learning to your future goals. What's your biggest challenge?";
       }
-      
+
       if (lowerMessage.includes('time') || lowerMessage.includes('schedule') || lowerMessage.includes('manage')) {
         return "Time management for students: 1) Use a planner or calendar, 2) Prioritize tasks by importance, 3) Block time for focused study, 4) Eliminate distractions, 5) Include breaks and leisure time. How much time do you have for studying?";
       }
-      
+
       if (lowerMessage.includes('notes') || lowerMessage.includes('note-taking')) {
         return "Effective note-taking methods: 1) Use the Cornell note system, 2) Write in your own words, 3) Include examples and diagrams, 4) Review and revise notes regularly, 5) Use colors and highlighting strategically. What format works best for you?";
       }
-      
+
       if (lowerMessage.includes('help') || lowerMessage.includes('stuck') || lowerMessage.includes('difficult')) {
         return "When you're stuck: 1) Break the problem into smaller parts, 2) Look for similar examples, 3) Ask specific questions, 4) Take a short break and return fresh, 5) Explain what you do understand first. What specific part is challenging you?";
       }
-      
+
       if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
         return "Hello! I'm your AI learning assistant. I can help you with study strategies, explain concepts, provide learning tips, and support your academic journey. What would you like to learn about today?";
       }
-      
+
       // Default response
       return "I'm your AI learning assistant! I can help with study techniques, explain concepts, provide learning strategies, and support your academic goals. Try asking me about: study methods, time management, memory techniques, test preparation, or specific subjects like math, science, or languages. What would you like to know?";
     };
-    
+
     if (!hfApiKey) {
       console.log('No HF_API_KEY, using fallback response');
       return res.json({ response: getFallbackResponse(message) });
@@ -827,7 +893,7 @@ Keep responses concise, friendly, and educational.`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
-    
+
     try {
       console.log('Making HF API request...');
       const response = await fetch('https://router.huggingface.co/v1/chat/completions', {
@@ -860,7 +926,7 @@ Keep responses concise, friendly, and educational.`;
 
       const data = await response.json();
       const aiResponse = data?.choices?.[0]?.message?.content;
-      
+
       if (aiResponse) {
         console.log('AI response received successfully');
         return res.json({ response: aiResponse.trim() });
@@ -868,13 +934,13 @@ Keep responses concise, friendly, and educational.`;
         console.log('No AI response content, using fallback');
         return res.json({ response: getFallbackResponse(message) });
       }
-      
+
     } catch (apiError) {
       clearTimeout(timeout);
       console.error('Chatbot API error:', apiError.message);
       return res.json({ response: getFallbackResponse(message) });
     }
-    
+
   } catch (error) {
     console.error('Chatbot error:', error);
     return res.json({ response: "I'm here to help with your learning! I'm having some technical difficulties right now, but I can still provide study tips and guidance. What would you like to know about?" });

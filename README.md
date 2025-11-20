@@ -12,6 +12,7 @@ A full-stack MERN application that helps students generate personalized quizzes 
 - 📊 **Progress Tracking**: View quiz history, scores, and performance analytics
 - 🏆 **Gamification**: Earn XP, level up, and unlock badges
 - 🔐 **Secure Authentication**: Firebase authentication with email verification
+- 🛡️ **Security Features**: Rate limiting, input validation, and secure credential management
 
 ## Tech Stack
 
@@ -30,6 +31,7 @@ A full-stack MERN application that helps students generate personalized quizzes 
 - Multer for file uploads
 - pdf-parse for PDF extraction
 - mammoth for Word document extraction
+- express-rate-limit for API protection
 
 ## Prerequisites
 
@@ -53,17 +55,25 @@ cd backend
 npm install
 ```
 
-Create `.env` file in backend directory:
+Create `.env` file in backend directory (see `.env.example` for template):
 ```env
 PORT=5000
 MONGO_URI=your_mongodb_connection_string
-JWT_SECRET=your_jwt_secret
-EMAIL_USER=your_gmail@gmail.com
+JWT_SECRET=your_jwt_secret_minimum_32_characters
+EMAIL_USER=your_email@gmail.com
 EMAIL_PASS=your_gmail_app_password
 HF_API_KEY=your_huggingface_api_key
 HF_MODEL=Qwen/Qwen2.5-7B-Instruct
+FIREBASE_PROJECT_ID=your-firebase-project-id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour private key\n-----END PRIVATE KEY-----\n"
 FRONTEND_URL=http://localhost:5173
 ```
+
+> **Important**: 
+> - JWT_SECRET must be at least 32 characters long
+> - Never commit .env files to version control
+> - Use the `.env.example` file as a template
 
 Start backend server:
 ```bash
@@ -76,7 +86,7 @@ cd frontend
 npm install
 ```
 
-Create `.env` file in frontend directory:
+Create `.env` file in frontend directory (see `.env.example` for template):
 ```env
 VITE_API_URL=http://localhost:5000
 VITE_FIREBASE_API_KEY=your_firebase_api_key
@@ -85,7 +95,10 @@ VITE_FIREBASE_PROJECT_ID=your-project-id
 VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
+VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
 ```
+
+> **Note**: All Firebase environment variables are required for the app to function properly.
 
 Start frontend development server:
 ```bash
@@ -179,6 +192,45 @@ AI-learning-assistance/
 - Level progression system
 - Achievement badges
 - Daily streak tracking
+
+## Security Features
+
+- **Rate Limiting**: Protects against brute force attacks and API abuse
+  - Authentication endpoints: 5 attempts per 15 minutes
+  - Email verification: 3 emails per hour
+  - Quiz generation: 10 requests per minute
+  - Chatbot: 20 messages per minute
+- **Input Validation**: All user inputs are validated and sanitized
+- **Email Validation**: Accepts all valid email providers (not restricted to Gmail)
+- **Verification Code Expiration**: Email verification codes expire after 10 minutes
+- **Environment Variable Validation**: Server validates all required configuration on startup
+- **Secure Credential Storage**: No hardcoded credentials in source code
+
+## Known Limitations
+
+> This project is designed for **educational purposes** as a college mini-project.
+
+### Current Limitations:
+1. **In-Memory Verification Codes**: Email verification codes are stored in memory and will be lost on server restart. For production, use Redis or database storage.
+2. **Dual Authentication**: Uses both Firebase Auth and JWT. Production apps should choose one consistent authentication strategy.
+3. **Token Storage**: Uses localStorage for JWT tokens. Consider httpOnly cookies for enhanced security in production.
+4. **No Automated Tests**: Unit and integration tests are not included.
+5. **Basic Error Logging**: Uses console.log instead of proper logging framework.
+6. **File Upload Security**: Basic file type validation. Production should include virus scanning.
+7. **AI Output Sanitization**: AI-generated content is not sanitized for XSS. Add Content Security Policy for production.
+8. **No HTTPS Enforcement**: Should enforce HTTPS in production deployment.
+
+### Recommended for Production:
+- Implement comprehensive testing suite
+- Add proper logging and monitoring (Winston, Sentry)
+- Use Redis for session and verification code storage
+- Implement HTTPS with HSTS headers
+- Add Content Security Policy headers
+- Sanitize all AI-generated content
+- Choose single authentication strategy
+- Add database backup and recovery procedures
+- Implement CI/CD pipeline
+- Add API documentation (Swagger/OpenAPI)
 
 ## License
 
