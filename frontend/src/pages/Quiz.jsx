@@ -236,29 +236,6 @@ export default function Quiz() {
       if (!res.ok) throw new Error(data.error || 'Failed to analyze quiz');
 
       setScore(data.score);
-      setAnalysis(data);
-      setSubmitted(true);
-      setTimeLeft(0); // Stop timer
-      localStorage.removeItem('quizStarted');
-
-      // Award XP: 10 per correct
-      const gained = (data.score || 0) * 10;
-      const userRaw = localStorage.getItem('user');
-      if (userRaw) {
-        const user = JSON.parse(userRaw);
-        let xp = (user.xp || 0) + gained;
-        let level = user.level || 1;
-        while (xp >= level * 100) {
-          xp -= level * 100;
-          level += 1;
-        }
-        const updated = { ...user, xp, level };
-        localStorage.setItem('user', JSON.stringify(updated));
-      }
-
-      // Track stats
-      const stats = JSON.parse(localStorage.getItem('stats') || '{}');
-      const percent = questions.length > 0 ? Math.round((data.score / questions.length) * 100) : 0;
       stats.quizzesCompleted = (stats.quizzesCompleted || 0) + 1;
       stats.lastScore = data.score;
       stats.totalQuestions = questions.length;

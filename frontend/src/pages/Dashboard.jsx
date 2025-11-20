@@ -76,7 +76,7 @@ export default function Dashboard() {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
           <div>
             <h2 style={{margin:0,fontSize:'1.5rem'}}>Level {stats.level}</h2>
-            <p style={{opacity:0.9,marginTop:'0.25rem'}}>{stats.xp} / {stats.level * 100} XP</p>
+            <p style={{opacity:0.9,marginTop:'0.25rem'}}>{Math.floor(stats.xp)} / {stats.level * 100} XP</p>
           </div>
           <div style={{fontSize:'3rem'}}>⭐</div>
         </div>

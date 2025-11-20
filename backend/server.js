@@ -576,8 +576,8 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
     );
 
     if (!isDuplicate) {
-      // Calculate XP with bonuses
-      let baseXP = attempt.score * 10;
+      // Calculate XP with bonuses (always whole numbers)
+      let baseXP = Math.floor(attempt.score * 10);
       let bonusXP = 0;
 
       // Difficulty bonus
@@ -609,8 +609,8 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
       user.stats.lastQuizDate = today;
       user.stats.longestStreak = Math.max(user.stats.longestStreak || 0, user.stats.currentStreak || 0);
 
-      const totalXP = baseXP + bonusXP;
-      user.xp += totalXP;
+      const totalXP = Math.floor(baseXP + bonusXP);
+      user.xp = Math.floor((user.xp || 0) + totalXP);
 
       // Level up
       while (user.xp >= user.level * 100) {
@@ -669,7 +669,7 @@ app.post('/api/save-quiz-history', authMiddleware, async (req, res) => {
         if (check.condition && !user.badges.find(b => b.key === check.key)) {
           user.badges.push({ key: check.key, unlockedAt: Date.now() });
           newBadges.push(check.key);
-          user.xp += 50; // Badge bonus XP
+          user.xp = Math.floor((user.xp || 0) + 50); // Badge bonus XP
         }
       });
 
