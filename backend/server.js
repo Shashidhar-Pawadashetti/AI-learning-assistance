@@ -1,17 +1,15 @@
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import sgMail from '@sendgrid/mail';
+import multer from 'multer';
+import User from './models/User.js';
+import { authMiddleware } from './middleware/auth.js';
 
-// Validate critical environment variables on startup
-const requiredEnvVars = ['MONGO_URI', 'JWT_SECRET', 'SENDGRID_API_KEY', 'SENDGRID_FROM_EMAIL'];
-const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
-if (missingEnvVars.length > 0) {
-  console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
-  console.error('   Please create a .env file in the backend directory. See .env.example for reference.');
-  process.exit(1);
-}
-
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-  console.error('❌ JWT_SECRET must be at least 32 characters long for security.');
-  process.exit(1);
-}
+dotenv.config();
 
 const app = express();
 
@@ -22,38 +20,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// Rate limiting configurations
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per windowMs
-  message: { error: 'Too many authentication attempts. Please try again in 15 minutes.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 
-const emailLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 3, // 3 emails per hour
-  message: { error: 'Too many verification emails sent. Please try again in 1 hour.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const quizLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // 10 quiz generations per minute
-  message: { error: 'Too many quiz requests. Please wait a moment before generating another quiz.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const chatbotLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute  
-  max: 20, // 20 messages per minute
-  message: { error: 'Too many messages. Please slow down.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 
 // Multer configuration for file uploads
 const storage = multer.memoryStorage();
@@ -63,36 +30,44 @@ const upload = multer({
 });
 
 // --- Email Verification Code Store (in-memory, for demo) ---
-// Structure: { email: { code: '123456', expiresAt: timestamp } }
 const verificationCodes = {};
 
 // --- SendGrid Setup ---
-sgMail.setApiKey(process.env.SENDGRID_API_KEY || '');
-
-verificationCodes[email] = { code, expiresAt };
-try {
-  const msg = {
-    to: email,
-    from: process.env.SENDGRID_FROM_EMAIL,
-    subject: 'AI Learning Assistant - Verification Code',
-    text: `Your verification code is: ${code}`,
-    html: `<div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
-        <h2 style="color: #667eea;">AI Learning Assistant</h2>
-        <p>Your verification code is:</p>
-        <div style="background: #f8fafc; padding: 15px; border-radius: 8px; font-size: 24px; font-weight: bold; text-align: center; color: #667eea; letter-spacing: 2px;">
-          ${code}
-        </div>
-        <p style="color: #64748b; margin-top: 15px;">This code will expire in 10 minutes.</p>
-        <p style="color: #64748b;">If you didn't request this code, please ignore this email.</p>
-      </div>`
-  };
-
-  await sgMail.send(msg);
-  res.json({ success: true });
-} catch (err) {
-  console.error('SendGrid email error:', err);
-  res.status(500).json({ error: 'Failed to send verification email.' });
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 }
+
+// --- Send Verification Code Endpoint ---
+app.post('/api/send-verification-code', async (req, res) => {
+  const { email } = req.body;
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'Invalid email address.' });
+  }
+  
+  if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
+    return res.status(500).json({ error: 'Email service not configured.' });
+  }
+  
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const normalizedEmail = email.toLowerCase().trim();
+  verificationCodes[normalizedEmail] = code;
+  
+  console.log(`Verification code generated for ${normalizedEmail}: ${code}`);
+  
+  try {
+    await sgMail.send({
+      to: email,
+      from: process.env.SENDGRID_FROM_EMAIL,
+      subject: 'Your Verification Code - AI Learning Assistant',
+      text: `Your verification code is: ${code}`,
+      html: `<p>Your verification code is: <strong>${code}</strong></p>`
+    });
+    console.log(`Verification email sent to ${email}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Email send error:', err);
+    res.status(500).json({ error: 'Failed to send verification email.' });
+  }
 });
 
 // --- Verify Code Endpoint ---
@@ -101,23 +76,19 @@ app.post('/api/verify-code', (req, res) => {
   if (!email || !code) {
     return res.status(400).json({ error: 'Email and code required.' });
   }
-
-  const stored = verificationCodes[email];
-  if (!stored) {
-    return res.status(400).json({ error: 'No verification code found. Please request a new code.' });
-  }
-
-  // Check if code has expired
-  if (Date.now() > stored.expiresAt) {
-    delete verificationCodes[email];
-    return res.status(400).json({ error: 'Verification code has expired. Please request a new code.' });
-  }
-
-  // Check if code matches
-  if (stored.code === code) {
-    delete verificationCodes[email]; // Remove after successful verification
+  
+  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedCode = code.toString().trim();
+  const storedCode = verificationCodes[normalizedEmail];
+  
+  console.log(`Verification attempt - Email: ${normalizedEmail}, Code: ${normalizedCode}, Stored: ${storedCode}`);
+  
+  if (storedCode && storedCode === normalizedCode) {
+    delete verificationCodes[normalizedEmail];
+    console.log(`Verification successful for ${normalizedEmail}`);
     res.json({ success: true });
   } else {
+    console.log(`Verification failed for ${normalizedEmail}`);
     res.status(400).json({ error: 'Invalid code.' });
   }
 });
@@ -126,7 +97,7 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
 
-app.post('/api/signup', authLimiter, async (req, res) => {
+app.post('/api/signup', async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -153,7 +124,7 @@ app.post('/api/signup', authLimiter, async (req, res) => {
   }
 });
 
-app.post('/api/login', authLimiter, async (req, res) => {
+app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -183,7 +154,7 @@ app.post('/api/login', authLimiter, async (req, res) => {
 });
 
 // --- Quiz Generation using Hugging Face Inference API ---
-app.post('/api/generate-quiz', quizLimiter, authMiddleware, async (req, res) => {
+app.post('/api/generate-quiz', authMiddleware, async (req, res) => {
   try {
     const { notes, level = 'medium', numQuestions = 20 } = req.body || {};
     if (!notes || notes.trim().length < 20) {
@@ -791,7 +762,7 @@ app.post('/api/extract-pdf', upload.single('file'), async (req, res) => {
 });
 
 // --- Chatbot Endpoint ---
-app.post('/api/chatbot', chatbotLimiter, async (req, res) => {
+app.post('/api/chatbot', async (req, res) => {
   try {
     const { message, context = '' } = req.body;
     if (!message || message.trim().length === 0) {

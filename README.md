@@ -27,11 +27,10 @@ A full-stack MERN application that helps students generate personalized quizzes 
 - MongoDB with Mongoose
 - JWT for authentication
 - Hugging Face API integration
-- Nodemailer for email verification
+- Nodemailer with SendGrid for email verification
 - Multer for file uploads
 - pdf-parse for PDF extraction
 - mammoth for Word document extraction
-- express-rate-limit for API protection
 
 ## Prerequisites
 
@@ -39,7 +38,7 @@ A full-stack MERN application that helps students generate personalized quizzes 
 - MongoDB Atlas account
 - Firebase project
 - Hugging Face API key
-- Gmail account (for email verification)
+- SendGrid account (for email verification)
 
 ## Installation
 
