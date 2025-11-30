@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword, updateProfile, signInWithPopup, fetchSignInMethodsForEmail, getAdditionalUserInfo, signOut } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
+
 import { API_URL } from '../config';
+import { validateName, validateEmail, validatePassword } from "../utils/validation";
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -18,8 +20,9 @@ export default function Signup() {
   // Step 1: Send verification code
   const handleSendCode = async () => {
     setError("");
-    if (!email) {
-      setError("Please enter your email");
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setError(emailError);
       return;
     }
     setSending(true);
@@ -69,6 +72,18 @@ export default function Signup() {
   const handleSignup = async (e) => {
     e.preventDefault();
     setError("");
+
+    const nameError = validateName(name);
+    if (nameError) {
+      setError(nameError);
+      return;
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
 
     if (!emailVerified) {
       setError("Please verify your email first");

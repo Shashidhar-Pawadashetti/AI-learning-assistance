@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_URL } from '../config';
+import Loading from "../components/Loading";
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -35,20 +36,34 @@ export default function Dashboard() {
       const res = await fetch(`${API_URL}/api/user-stats`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      
       if (res.ok) {
-        const data = await res.json();
-        setStats(data);
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          setStats(data);
+        } else {
+          console.error('Server returned non-JSON response');
+          setError('Server error - please check backend is running');
+        }
       } else {
-        setError('Failed to load stats');
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await res.json();
+          setError(errorData.error || 'Failed to load stats');
+        } else {
+          setError(`Server error (${res.status}) - please check backend is running`);
+        }
       }
     } catch (e) {
-      setError('Error loading dashboard');
+      console.error('Dashboard fetch error:', e);
+      setError('Cannot connect to server - please check backend is running');
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) return <div style={{padding:'2rem',textAlign:'center'}}>Loading...</div>;
+  if (loading) return <Loading message="Loading dashboard..." />;
   if (error) return <div style={{padding:'2rem',textAlign:'center',color:'red'}}>{error}</div>;
   if (!stats) return <div style={{padding:'2rem',textAlign:'center'}}>No data</div>;
 

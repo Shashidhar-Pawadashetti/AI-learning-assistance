@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_URL } from '../config';
+import Loading from "../components/Loading";
 
 const BADGES = [
   { key: 'first_quiz', title: 'First Steps', desc: 'Complete your first quiz', emoji: '🥇', category: 'Milestone' },
@@ -73,7 +74,7 @@ export default function Achievements() {
     }
   };
 
-  if (loading) return <div style={{padding:'2rem',textAlign:'center'}}>Loading...</div>;
+  if (loading) return <Loading message="Loading achievements..." />;
   if (!stats) return <div style={{padding:'2rem',textAlign:'center'}}>No data</div>;
 
   const s = stats.stats || {};

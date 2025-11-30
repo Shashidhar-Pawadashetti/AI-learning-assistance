@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
+import { validateEmail, validatePassword } from "../utils/validation";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -12,6 +13,19 @@ export default function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+
+    // Validate inputs
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setError(emailError);
+      return;
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -111,7 +125,7 @@ export default function Login() {
         </form>
 
         <p className="signup-text" style={{ marginTop: 12 }}>
-          Don’t have an account? <a href="/Signup">Sign Up</a>
+          Don't have an account? <a href="/signup">Sign Up</a>
         </p>
       </div>
     </div>

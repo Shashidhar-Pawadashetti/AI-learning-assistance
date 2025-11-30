@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_URL } from '../config';
+import Loading from "../components/Loading";
+import { validateNotes } from "../utils/validation";
 
 export default function UploadNotes() {
   const [notes, setNotes] = useState("");
@@ -47,32 +49,31 @@ export default function UploadNotes() {
       return;
     }
 
-    // Text-based files
-    const textExtensions = ['.txt', '.md', '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.c', '.cpp', '.html', '.css', '.json', '.xml', '.csv', '.log', '.sh', '.bat', '.sql', '.r', '.swift', '.go', '.rs', '.php', '.rb', '.kt', '.scala'];
-    const isTextFile = textExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
-
-    if (isTextFile || file.type.startsWith('text/')) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = event.target.result;
-        setNotes(text);
-        setTimeout(() => setSuccessMessage(''), 3000);
+    // For all other files, try to read as text
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      // Basic check to see if it looks like text (not binary nulls)
+      if (text.includes('\0')) {
+        setErrorMessage("This file appears to be binary/non-text. Please paste text manually.");
         setLoading(false);
-      };
-      reader.onerror = () => {
-        setErrorMessage("Failed to read file. Please paste text manually.");
-        setLoading(false);
-      };
-      reader.readAsText(file);
-    } else {
+        return;
+      }
+      setNotes(text);
+      setTimeout(() => setSuccessMessage(''), 3000);
       setLoading(false);
-      setErrorMessage(`Unsupported file type. Please use PDF, Word (.docx), TXT, MD, or code files.`);
-    }
+    };
+    reader.onerror = () => {
+      setErrorMessage("Failed to read file. Please paste text manually.");
+      setLoading(false);
+    };
+    reader.readAsText(file);
   };
 
   const handleSubmit = () => {
-    if (!notes.trim()) {
-      setErrorMessage("Please paste or upload notes before generating a quiz.");
+    const notesError = validateNotes(notes);
+    if (notesError) {
+      setErrorMessage(notesError);
       return;
     }
 
@@ -83,14 +84,25 @@ export default function UploadNotes() {
       return;
     }
 
-    console.log('=== UPLOAD NOTE DEBUG ===');
-    console.log('Storing notes (first 500 chars):', notes.substring(0, 500));
-    console.log('Notes length:', notes.length);
-    console.log('===========================');
-
+    // Store notes with verification
     localStorage.setItem("studentNotes", notes);
-    localStorage.setItem("quizDifficulty", "medium");
+    // Clear old quiz state to force regeneration
+    localStorage.removeItem('quiz_questions');
+    localStorage.removeItem('quiz_answers');
+    localStorage.removeItem('quiz_started');
+    localStorage.removeItem('quiz_timed_mode');
+    localStorage.removeItem('quiz_time_left');
+    localStorage.removeItem('quiz_start_time');
+    localStorage.removeItem('quiz_submitted');
     localStorage.setItem("shouldGenerateQuiz", "true");
+    
+    // Verify storage before navigation
+    const stored = localStorage.getItem("studentNotes");
+    if (!stored || stored.length < 50) {
+      setErrorMessage("Failed to save notes. Please try again. Ensure notes are at least 50 characters.");
+      return;
+    }
+    
     navigate("/quiz");
   };
 
@@ -105,13 +117,7 @@ export default function UploadNotes() {
       {/* Main Card */}
       <div style={{background:'white',borderRadius:'16px',padding:'2rem',border:'1px solid #e2e8f0',boxShadow:'0 4px 12px rgba(0,0,0,0.08)'}}>
 
-      {loading && (
-        <div style={{background:'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',borderRadius:'12px',padding:'1.5rem',color:'white',marginBottom:'1.5rem',textAlign:'center'}}>
-          <div style={{fontSize:'2rem',marginBottom:'0.5rem'}}>⏳</div>
-          <p style={{margin:0,fontWeight:'bold'}}>Extracting text from PDF...</p>
-          <p style={{margin:'0.5rem 0 0 0',fontSize:'0.875rem',opacity:0.9}}>This may take a moment for scanned PDFs</p>
-        </div>
-      )}
+      {loading && <Loading message="Extracting text from PDF..." />}
 
       {errorMessage && (
         <div style={{background:'#fef3c7',border:'2px solid #f59e0b',borderRadius:'12px',padding:'1rem',marginBottom:'1.5rem',color:'#92400e'}}>
@@ -153,19 +159,14 @@ export default function UploadNotes() {
         <label style={{display:'block',marginBottom:'0.75rem',fontWeight:'600',color:'#334155',fontSize:'0.875rem'}}>📎 Or Upload a File</label>
         <input
           type="file"
-          accept=".pdf,.docx,.txt,.md,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.html,.css,.json,.xml,.csv,.log,.sh,.bat,.sql,.r,.swift,.go,.rs,.php,.rb,.kt,.scala"
           onChange={handleFileUpload}
           disabled={loading}
           style={{width:'100%',padding:'0.75rem',border:'2px dashed #cbd5e1',borderRadius:'12px',cursor:'pointer',background:'#f8fafc',transition:'all 0.2s',boxSizing:'border-box'}}
           onMouseEnter={(e) => {e.target.style.borderColor = '#3b82f6'; e.target.style.background = '#eff6ff';}}
           onMouseLeave={(e) => {e.target.style.borderColor = '#cbd5e1'; e.target.style.background = '#f8fafc';}}
         />
-        <div style={{marginTop:'0.5rem',fontSize:'0.75rem',color:'#64748b'}}>Supports: PDF, Word (.docx), TXT, MD, and code files (.js, .py, .java, .html, etc.)</div>
+        <div style={{marginTop:'0.5rem',fontSize:'0.75rem',color:'#64748b'}}>Supports: PDF, Word (.docx), and any text files</div>
       </div>
-
-
-
-
 
       <button 
         onClick={handleSubmit} 
@@ -174,7 +175,7 @@ export default function UploadNotes() {
         onMouseEnter={(e) => !loading && notes.trim() && (e.target.style.transform = 'translateY(-2px)')}
         onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
       >
-        {loading ? '⏳ Processing...' : 'Submit Notes'}
+        {loading ? '⏳ Processing...' : 'Generate Quiz'}
       </button>
       </div>
     </div>

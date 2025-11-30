@@ -1,6 +1,5 @@
 import admin from 'firebase-admin';
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
 
 let firebaseInitialized = false;
 
@@ -51,15 +50,13 @@ export const authMiddleware = async (req, res, next) => {
     // Try JWT first (for regular signup/login)
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.id);
-      if (user) {
-        req.user = {
-          uid: user.firebaseUid || user._id.toString(),
-          email: user.email,
-          userId: user._id
-        };
-        return next();
-      }
+      req.user = {
+        uid: decoded.id,
+        email: decoded.email,
+        userId: decoded.id,
+        isJWT: true
+      };
+      return next();
     } catch (jwtError) {
       // JWT failed, try Firebase
     }
@@ -72,7 +69,8 @@ export const authMiddleware = async (req, res, next) => {
     const decodedToken = await admin.auth().verifyIdToken(token);
     req.user = {
       uid: decodedToken.uid,
-      email: decodedToken.email
+      email: decodedToken.email,
+      isJWT: false
     };
     next();
   } catch (error) {
