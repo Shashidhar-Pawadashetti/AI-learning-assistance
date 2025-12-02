@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_URL } from '../config';
-import Loading from "../components/Loading";
+import { fetchUserStats } from '../utils/fetchUserStats';
 
 const BADGES = [
   { key: 'first_quiz', title: 'First Steps', desc: 'Complete your first quiz', emoji: '🥇', category: 'Milestone' },
@@ -42,39 +42,16 @@ export default function Achievements() {
 
   const fetchStats = async () => {
     try {
-      let token = localStorage.getItem('token');
-      
-      // Refresh token
-      try {
-        const { auth } = await import('../firebase');
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          token = await currentUser.getIdToken(true);
-          localStorage.setItem('token', token);
-        } else {
-          navigate('/login');
-          return;
-        }
-      } catch (e) {
-        navigate('/login');
-        return;
-      }
-      
-      const res = await fetch(`${API_URL}/api/user-stats`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
-      }
+      const data = await fetchUserStats(navigate);
+      if (data) setStats(data);
     } catch (e) {
-      console.error('Failed to fetch stats:', e);
+      if (process.env.NODE_ENV === 'development') console.error('Failed to fetch stats:', e);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) return <Loading message="Loading achievements..." />;
+  if (loading) return <div style={{padding:'2rem',textAlign:'center'}}>Loading...</div>;
   if (!stats) return <div style={{padding:'2rem',textAlign:'center'}}>No data</div>;
 
   const s = stats.stats || {};

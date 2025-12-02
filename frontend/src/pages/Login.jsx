@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
-import { validateEmail, validatePassword } from "../utils/validation";
+import storeUserData from '../utils/storeUserData';
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -14,39 +14,14 @@ export default function Login() {
     e.preventDefault();
     setError("");
 
-    // Validate inputs
-    const emailError = validateEmail(email);
-    if (emailError) {
-      setError(emailError);
-      return;
-    }
-
-    const passwordError = validatePassword(password);
-    if (passwordError) {
-      setError(passwordError);
-      return;
-    }
-
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
-      // Get Firebase ID token
       const token = await user.getIdToken();
-
-      // Store user info in localStorage
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({
-        id: user.uid,
-        name: user.displayName || user.email.split('@')[0],
-        email: user.email,
-        xp: 0,
-        level: 1
-      }));
-
-      window.location.href = '/dashboard';
+      storeUserData(token, user.uid, user.displayName || user.email?.split('@')[0] || 'User', user.email, 0, 1);
+      navigate('/dashboard');
     } catch (err) {
-      console.error('Login error:', err);
+      if (process.env.NODE_ENV === 'development') console.error('Login error:', err);
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
         setError('Invalid email or password');
       } else if (err.code === 'auth/too-many-requests') {
@@ -65,19 +40,10 @@ export default function Login() {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       const token = await user.getIdToken();
-
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({
-        id: user.uid,
-        name: user.displayName || user.email?.split('@')[0] || 'User',
-        email: user.email,
-        xp: 0,
-        level: 1
-      }));
-
-      window.location.href = '/dashboard';
+      storeUserData(token, user.uid, user.displayName || user.email?.split('@')[0] || 'User', user.email, 0, 1);
+      navigate('/dashboard');
     } catch (err) {
-      console.error('Google sign-in error:', err);
+      if (process.env.NODE_ENV === 'development') console.error('Google sign-in error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
         setError('Sign-in popup was closed before completing.');
       } else if (err.code === 'auth/popup-blocked') {
@@ -125,7 +91,7 @@ export default function Login() {
         </form>
 
         <p className="signup-text" style={{ marginTop: 12 }}>
-          Don't have an account? <a href="/signup">Sign Up</a>
+          Don’t have an account? <Link to="/signup">Sign Up</Link>
         </p>
       </div>
     </div>

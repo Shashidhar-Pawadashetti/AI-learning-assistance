@@ -53,11 +53,10 @@ export const authMiddleware = async (req, res, next) => {
       req.user = {
         uid: decoded.id,
         email: decoded.email,
-        userId: decoded.id,
-        isJWT: true
+        userId: decoded.id
       };
       return next();
-    } catch (jwtError) {
+    } catch {
       // JWT failed, try Firebase
     }
     
@@ -69,12 +68,11 @@ export const authMiddleware = async (req, res, next) => {
     const decodedToken = await admin.auth().verifyIdToken(token);
     req.user = {
       uid: decodedToken.uid,
-      email: decodedToken.email,
-      isJWT: false
+      email: decodedToken.email
     };
     next();
   } catch (error) {
-    console.error('Auth error:', error.message);
+    if (process.env.NODE_ENV === 'development') console.error('Auth error:', error.message);
     return res.status(401).json({ error: 'Unauthorized - Invalid token' });
   }
 };

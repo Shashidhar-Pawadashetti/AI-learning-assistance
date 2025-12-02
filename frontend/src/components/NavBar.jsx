@@ -17,8 +17,13 @@ export default function Navbar() {
   }, [dark]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    setIsLoggedIn(!!token);
+    const checkAuth = () => {
+      const token = localStorage.getItem('token');
+      setIsLoggedIn(!!token);
+    };
+    checkAuth();
+    window.addEventListener('storage', checkAuth);
+    return () => window.removeEventListener('storage', checkAuth);
   }, []);
 
   const handleLogout = async () => {
@@ -29,7 +34,7 @@ export default function Navbar() {
       setIsLoggedIn(false);
       navigate('/');
     } catch (err) {
-      console.error('Logout error:', err);
+      if (process.env.NODE_ENV === 'development') console.error('Logout error:', err);
     }
   };
 
@@ -43,11 +48,11 @@ export default function Navbar() {
         <Link to="/achievements">Achievements</Link>
         <Link to="/dashboard">Dashboard</Link>
         {isLoggedIn ? (
-          <a onClick={handleLogout} style={{ marginLeft: '25px', cursor: 'pointer' }}>Logout</a>
+          <button onClick={handleLogout} style={{ marginLeft: '25px', cursor: 'pointer', background: 'none', border: 'none', color: 'inherit', font: 'inherit', textDecoration: 'none' }}>Logout</button>
         ) : (
           <>
-            <Link to="/Login">Login</Link>
-            <Link to="/Signup">Signup</Link>
+            <Link to="/login">Login</Link>
+            <Link to="/signup">Signup</Link>
           </>
         )}
         <button className="toggle-btn" onClick={() => setDark(!dark)}>

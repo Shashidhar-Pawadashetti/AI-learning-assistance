@@ -2,22 +2,25 @@ import { useState, useRef, useEffect } from 'react';
 import ChatMessage from './ChatMessage';
 import { API_URL } from '../config';
 
-// Add bounce animation
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes bounce {
-    0%, 20%, 50%, 80%, 100% {
-      transform: translateY(0);
+// Add bounce animation only once
+if (!document.getElementById('chatbot-bounce-animation')) {
+  const style = document.createElement('style');
+  style.id = 'chatbot-bounce-animation';
+  style.textContent = `
+    @keyframes bounce {
+      0%, 20%, 50%, 80%, 100% {
+        transform: translateY(0);
+      }
+      40% {
+        transform: translateY(-10px);
+      }
+      60% {
+        transform: translateY(-5px);
+      }
     }
-    40% {
-      transform: translateY(-10px);
-    }
-    60% {
-      transform: translateY(-5px);
-    }
-  }
-`;
-document.head.appendChild(style);
+  `;
+  document.head.appendChild(style);
+}
 
 export default function Chatbot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -87,7 +90,7 @@ export default function Chatbot() {
         throw new Error(data.error || 'Failed to get response');
       }
     } catch (error) {
-      console.error('Chatbot error:', error);
+      if (process.env.NODE_ENV === 'development') console.error('Chatbot error:', error);
       const errorMessage = {
         id: Date.now() + 1,
         text: "Sorry, I'm having trouble responding right now. Please try again in a moment.",

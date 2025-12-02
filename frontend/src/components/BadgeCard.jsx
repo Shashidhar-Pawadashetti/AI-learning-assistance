@@ -1,18 +1,12 @@
-import React, { memo } from 'react';
-
-const BadgeCard = memo(({ badge }) => {
+export default function BadgeCard({ title, desc, emoji, locked = false, unlockedAt = null }) {
   return (
-    <div className="badge-card">
-      <div className="emoji">{badge.icon}</div>
-      <h3>{badge.name}</h3>
-      <p>{badge.description}</p>
-      {badge.unlockedAt && (
-        <small style={{display:'block',marginTop:'0.5rem',color:'#64748b'}}>
-          Unlocked: {new Date(badge.unlockedAt).toLocaleDateString()}
-        </small>
+    <div className={`badge-card ${locked ? 'locked' : ''}`}>
+      <div className="emoji">{emoji}</div>
+      <h3>{title}</h3>
+      <p>{desc}</p>
+      {!locked && unlockedAt && (
+        <p style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>Unlocked on {new Date(unlockedAt).toLocaleDateString()}</p>
       )}
     </div>
   );
-});
-
-export default BadgeCard;
+}

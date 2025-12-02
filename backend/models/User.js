@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema({
     lastQuizDate: { type: String, default: '' },
     timedQuizzes: { type: Number, default: 0 },
     perfectScores: { type: Number, default: 0 },
-    topicStats: { type: Map, of: mongoose.Schema.Types.Mixed, default: new Map() }
+    topicStats: { type: Map, of: mongoose.Schema.Types.Mixed, default: () => new Map() }
   },
   badges: [{
     key: String,

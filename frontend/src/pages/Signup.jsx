@@ -1,112 +1,32 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { createUserWithEmailAndPassword, updateProfile, signInWithPopup, fetchSignInMethodsForEmail, getAdditionalUserInfo, signOut } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
-
-import { API_URL } from '../config';
-import { validateName, validateEmail, validatePassword } from "../utils/validation";
+import storeUserData from '../utils/storeUserData';
 
 export default function Signup() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [emailVerified, setEmailVerified] = useState(false);
-  const [code, setCode] = useState("");
-  const [sending, setSending] = useState(false);
-  const [verifying, setVerifying] = useState(false);
   const navigate = useNavigate();
 
-  // Step 1: Send verification code
-  const handleSendCode = async () => {
-    setError("");
-    const emailError = validateEmail(email);
-    if (emailError) {
-      setError(emailError);
-      return;
-    }
-    setSending(true);
-    try {
-      const res = await fetch(`${API_URL}/api/send-verification-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || "Failed to send code");
-      alert("Verification code sent to your email!");
-    } catch (err) {
-      setError(err.message || "Failed to send code");
-    } finally {
-      setSending(false);
-    }
-  };
-
-  // Step 2: Verify code
-  const handleVerifyCode = async () => {
-    setError("");
-    if (!code) {
-      setError("Please enter the verification code");
-      return;
-    }
-    setVerifying(true);
-    try {
-      const res = await fetch(`${API_URL}/api/verify-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code })
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || "Invalid code");
-      setEmailVerified(true);
-      setError("");
-      alert("Email verified successfully!");
-    } catch (err) {
-      setError(err.message || "Invalid code");
-    } finally {
-      setVerifying(false);
-    }
-  };
-
-  // Step 3: Signup
+  // Signup
   const handleSignup = async (e) => {
     e.preventDefault();
     setError("");
 
-    const nameError = validateName(name);
-    if (nameError) {
-      setError(nameError);
-      return;
-    }
-
-    const passwordError = validatePassword(password);
-    if (passwordError) {
-      setError(passwordError);
-      return;
-    }
-
-    if (!emailVerified) {
-      setError("Please verify your email first");
-      return;
-    }
-
     try {
-      // Create user with Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
       await updateProfile(user, { displayName: name });
       const token = await user.getIdToken();
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({
-        id: user.uid,
-        name: name,
-        email: user.email,
-        xp: 0,
-        level: 1
-      }));
-      window.location.href = '/dashboard';
+      storeUserData(token, user.uid, name, user.email, 0, 1);
+      navigate('/dashboard');
     } catch (err) {
-      console.error('Signup error:', err);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Signup error:', err);
+      }
       if (err.code === 'auth/email-already-in-use') {
         setError('Email already registered');
       } else if (err.code === 'auth/weak-password') {
@@ -156,19 +76,12 @@ export default function Signup() {
         return;
       }
       const token = await user.getIdToken();
-
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({
-        id: user.uid,
-        name: user.displayName || user.email?.split('@')[0] || 'User',
-        email: user.email,
-        xp: 0,
-        level: 1
-      }));
-
-      window.location.href = '/dashboard';
+      storeUserData(token, user.uid, user.displayName || user.email?.split('@')[0] || 'User', user.email, 0, 1);
+      navigate('/dashboard');
     } catch (err) {
-      console.error('Google signup error:', err);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Google signup error:', err);
+      }
       if (err.code === 'auth/popup-closed-by-user') {
         setError('Sign-in popup was closed before completing.');
       } else if (err.code === 'auth/popup-blocked') {
@@ -203,7 +116,6 @@ export default function Signup() {
         <h2>Create Account ✨</h2>
         <p>Sign up to start your learning journey</p>
         {error && <p style={{ color: 'red', fontSize: '14px' }}>{error}</p>}
-        {emailVerified && <p style={{ color: 'green', fontSize: '14px' }}>✓ Email verified</p>}
 
         <form onSubmit={handleSignup}>
           <input
@@ -213,50 +125,16 @@ export default function Signup() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            style={{ marginBottom: '15px' }}
           />
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', marginBottom: '15px' }}>
-            <input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              disabled={emailVerified}
-              style={{ flex: 1, margin: 0, padding: '12px', borderRadius: '12px', border: '1px solid #d1d5db', fontSize: '16px' }}
-            />
-            <button
-              type="button"
-              className="btn"
-              onClick={handleSendCode}
-              disabled={sending || emailVerified}
-              style={{ width: 'auto', padding: '8px 16px', margin: 0, height: '100%' }}
-            >
-              {sending ? '...' : emailVerified ? '✓' : 'Verify'}
-            </button>
-          </div>
-
-          {!emailVerified && (
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', marginBottom: '15px' }}>
-              <input
-                type="text"
-                placeholder="Enter verification code"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                style={{ flex: 1, margin: 0, padding: '12px', borderRadius: '12px', border: '1px solid #d1d5db', fontSize: '16px' }}
-              />
-              <button
-                type="button"
-                className="btn"
-                onClick={handleVerifyCode}
-                disabled={verifying}
-                style={{ width: 'auto', padding: '8px 16px', margin: 0, height: '100%' }}
-              >
-                {verifying ? 'Verifying...' : 'Submit'}
-              </button>
-            </div>
-          )}
+          <input
+            type="email"
+            placeholder="Email"
+            className="input-field"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
 
           <input
             type="password"
@@ -265,21 +143,18 @@ export default function Signup() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            style={{ marginBottom: '20px', marginTop: !emailVerified ? '0' : '15px' }}
           />
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', marginBottom: '15px' }}>
-            <button type="submit" className="btn" style={{ flex: 1, margin: 0, padding: '10px' }}>
-              Sign Up
-            </button>
-            <button type="button" className="btn" style={{ flex: 1, margin: 0, padding: '10px' }} onClick={handleGoogleSignup}>
-              Continue with Google
-            </button>
-          </div>
+          <button type="submit" className="btn">
+            Sign Up
+          </button>
+          <button type="button" className="btn" onClick={handleGoogleSignup}>
+            Continue with Google
+          </button>
         </form>
 
-        <p className="signup-text" style={{ marginTop: 12 }}>
-          Already have an account? <a href="/login">Login</a>
+        <p className="signup-text">
+          Already have an account? <Link to="/login">Login</Link>
         </p>
       </div>
     </div>

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_URL } from '../config';
-import Loading from "../components/Loading";
+import { fetchUserStats } from '../utils/fetchUserStats';
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -15,55 +14,20 @@ export default function Dashboard() {
 
   const fetchStats = async () => {
     try {
-      let token = localStorage.getItem('token');
-      
-      // Refresh token
-      try {
-        const { auth } = await import('../firebase');
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          token = await currentUser.getIdToken(true);
-          localStorage.setItem('token', token);
-        } else {
-          navigate('/login');
-          return;
-        }
-      } catch (e) {
-        navigate('/login');
-        return;
-      }
-      
-      const res = await fetch(`${API_URL}/api/user-stats`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (res.ok) {
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const data = await res.json();
-          setStats(data);
-        } else {
-          console.error('Server returned non-JSON response');
-          setError('Server error - please check backend is running');
-        }
+      const data = await fetchUserStats(navigate);
+      if (data) {
+        setStats(data);
       } else {
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const errorData = await res.json();
-          setError(errorData.error || 'Failed to load stats');
-        } else {
-          setError(`Server error (${res.status}) - please check backend is running`);
-        }
+        setError('Failed to load stats');
       }
     } catch (e) {
-      console.error('Dashboard fetch error:', e);
-      setError('Cannot connect to server - please check backend is running');
+      setError('Error loading dashboard');
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) return <Loading message="Loading dashboard..." />;
+  if (loading) return <div style={{padding:'2rem',textAlign:'center'}}>Loading...</div>;
   if (error) return <div style={{padding:'2rem',textAlign:'center',color:'red'}}>{error}</div>;
   if (!stats) return <div style={{padding:'2rem',textAlign:'center'}}>No data</div>;
 
