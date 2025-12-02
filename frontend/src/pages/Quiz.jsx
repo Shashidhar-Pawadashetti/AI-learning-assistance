@@ -52,6 +52,7 @@ export default function Quiz() {
   const [quizName, setQuizName] = useState("");
   const [quizTopic, setQuizTopic] = useState("");
   const [numQuestions, setNumQuestions] = useState(20);
+  const [difficulty, setDifficulty] = useState(localStorage.getItem('quizDifficulty') || 'medium');
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [viewAttempt, setViewAttempt] = useState(null);
@@ -185,7 +186,9 @@ export default function Quiz() {
     setTimedMode(mode);
     setStarted(true);
     setStartTime(Date.now());
-    localStorage.setItem('quizStarted', 'true');
+    localStorage.setItem('quiz_started', 'true');
+    localStorage.removeItem('quiz_submitted');
+    window.dispatchEvent(new Event('quizStatusChange'));
     if (mode === 'timed') {
       setTimeLeft(totalTime);
     }
@@ -238,6 +241,8 @@ export default function Quiz() {
       setScore(data.score);
       setAnalysis(data.analysis);
       setSubmitted(true);
+      localStorage.setItem('quiz_submitted', 'true');
+      window.dispatchEvent(new Event('quizStatusChange'));
 
       const percentAttempt = data.score;
       const attempt = {
@@ -369,21 +374,33 @@ export default function Quiz() {
     );
   };
 
+  // Component: Empty State
+  const EmptyState = ({ icon, title, description, action }) => (
+    <div style={{ textAlign: 'center', padding: '3rem 1.5rem', background: '#f8fafc', borderRadius: '16px', border: '2px dashed #cbd5e1' }}>
+      <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>{icon}</div>
+      <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#1e293b' }}>{title}</h3>
+      <p style={{ color: '#64748b', marginBottom: '1.5rem', maxWidth: '400px', margin: '0 auto 1.5rem' }}>{description}</p>
+      {action}
+    </div>
+  );
+
   // Component: History Card
   const HistoryCard = ({ item, onView, onDelete }) => (
-    <div style={styles.card}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h4 style={{ margin: 0 }}>{item.name}</h4>
-        <span style={{ fontSize: 12, color: '#64748b' }}>{new Date(item.createdAt).toLocaleDateString()}</span>
+    <div style={{ ...styles.card, position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 8, right: 8, background: '#fbbf24', color: '#78350f', padding: '4px 8px', borderRadius: 12, fontSize: 11, fontWeight: 'bold' }}>
+        +{item.score * 10} XP
       </div>
-      <p style={{ margin: '6px 0 8px 0', color: '#475569' }}>
-        Topic: <strong>{item.topic}</strong>
-        <br />
-        Score: <strong>{item.percent}%</strong> ({item.score}/{item.total})
-      </p>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn" onClick={() => onView(item)}>View</button>
-        <button className="btn danger" onClick={() => onDelete(item.id)}>Delete</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <h4 style={{ margin: 0, fontSize: 14, paddingRight: 60 }}>{item.name}</h4>
+      </div>
+      <p style={{ margin: '4px 0', color: '#64748b', fontSize: 12 }}>{item.topic} · {new Date(item.createdAt).toLocaleDateString()}</p>
+      <p style={{ margin: '4px 0 8px 0', color: '#334155', fontSize: 13, fontWeight: 600 }}>{item.percent}% ({item.score}/{item.total})</p>
+      <div style={{ height: 6, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden', marginBottom: 10 }}>
+        <div style={{ height: '100%', width: `${item.percent}%`, background: item.percent >= 75 ? '#22c55e' : item.percent >= 50 ? '#f59e0b' : '#ef4444', transition: 'width 0.3s' }} />
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button className="btn" onClick={() => onView(item)} style={{ flex: 1, padding: '6px 12px', fontSize: 13 }}>View</button>
+        <button className="btn danger" onClick={() => onDelete(item.id)} style={{ flex: 1, padding: '6px 12px', fontSize: 13 }}>Delete</button>
       </div>
     </div>
   );
@@ -497,9 +514,12 @@ export default function Quiz() {
       {showHistory && (
         <div style={{background:'white',borderRadius:'12px',padding:'1.5rem',border:'1px solid #e2e8f0',marginBottom:'2rem'}}>
           {history.length === 0 ? (
-            <div style={styles.emptyState}>
-              No past quizzes yet. Generate one to get started.
-            </div>
+            <EmptyState
+              icon="📚"
+              title="No Quizzes Yet"
+              description="Start your learning journey by uploading your notes and generating your first quiz!"
+              action={<button className="btn" onClick={handleStartNewQuiz}>Create Your First Quiz</button>}
+            />
           ) : (
             <>
               <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: 12 }}>
@@ -742,8 +762,11 @@ export default function Quiz() {
               </div>
               <p style={{marginBottom:'0.75rem',fontWeight:'600',color:'#334155'}}>Quiz Difficulty:</p>
               <select
-                value={localStorage.getItem('quizDifficulty') || 'medium'}
-                onChange={(e) => localStorage.setItem('quizDifficulty', e.target.value)}
+                value={difficulty}
+                onChange={(e) => {
+                  setDifficulty(e.target.value);
+                  localStorage.setItem('quizDifficulty', e.target.value);
+                }}
                 style={{width:'100%',padding:'0.75rem',border:'2px solid #e2e8f0',borderRadius:'8px',fontSize:'0.95rem',cursor:'pointer',background:'white',fontWeight:'500',marginBottom:'1rem'}}
               >
                 <option value="easy">🟢 Easy - Basic recall and understanding</option>

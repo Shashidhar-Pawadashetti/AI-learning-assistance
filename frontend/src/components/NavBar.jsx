@@ -4,22 +4,18 @@ import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
 
 export default function Navbar() {
-  const [dark, setDark] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (dark) {
-      document.body.classList.add("dark-mode");
-    } else {
-      document.body.classList.remove("dark-mode");
-    }
-  }, [dark]);
 
   useEffect(() => {
     const checkAuth = () => {
       const token = localStorage.getItem('token');
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
       setIsLoggedIn(!!token);
+      setUser(userData);
     };
     checkAuth();
     window.addEventListener('storage', checkAuth);
@@ -41,23 +37,34 @@ export default function Navbar() {
   return (
     <nav className="navbar">
       <h1 className="logo">Study Buddy</h1>
-      <div className="nav-links">
+      <button className="hamburger" onClick={() => setMenuOpen(!menuOpen)}>☰</button>
+      <div className={`nav-links ${menuOpen ? 'open' : ''}`}>
         <Link to="/">Home</Link>
         <Link to="/upload">Upload Notes</Link>
         <Link to="/quiz">Quiz</Link>
         <Link to="/achievements">Achievements</Link>
         <Link to="/dashboard">Dashboard</Link>
         {isLoggedIn ? (
-          <button onClick={handleLogout} style={{ marginLeft: '25px', cursor: 'pointer', background: 'none', border: 'none', color: 'inherit', font: 'inherit', textDecoration: 'none' }}>Logout</button>
+          isLoggedIn && user?.name && (
+            <div className="profile-dropdown">
+              <div className="user-info" onClick={() => setProfileOpen(!profileOpen)}>
+                <span>{user.name}</span>
+                <span>Lvl {user.level || 1}</span>
+                <span>{user.xp || 0} XP</span>
+              </div>
+              {profileOpen && (
+                <div className="dropdown-menu">
+                  <button onClick={handleLogout}>Logout</button>
+                </div>
+              )}
+            </div>
+          )
         ) : (
           <>
             <Link to="/login">Login</Link>
             <Link to="/signup">Signup</Link>
           </>
         )}
-        <button className="toggle-btn" onClick={() => setDark(!dark)}>
-          {dark ? "🌞" : "🌙"}
-        </button>
       </div>
     </nav>
   );
