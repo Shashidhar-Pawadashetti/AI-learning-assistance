@@ -16,12 +16,11 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 
 const hasHF = Boolean(process.env.HF_API_KEY);
-const hasGemini = false;
 
 const app = express();
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: ['http://localhost:5173', 'https://ai-learning-assistance.onrender.com'],
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -155,7 +154,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// --- Quiz Generation using Hugging Face Inference API ---
+// Quiz Generation using Hugging Face Inference API 
 app.post('/api/generate-quiz', authMiddleware, async (req, res) => {
   try {
     const { notes, level = 'medium', numQuestions = 20 } = req.body || {};
@@ -853,13 +852,25 @@ Keep responses concise, friendly, and educational.`;
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   const frontendPath = path.join(__dirname, '../frontend/dist');
-  app.use(express.static(frontendPath));
+  app.use(express.static(frontendPath, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.js')) {
+        res.setHeader('Content-Type', 'application/javascript');
+      } else if (filePath.endsWith('.css')) {
+        res.setHeader('Content-Type', 'text/css');
+      }
+    }
+  }));
   
-  app.get('*', (req, res) => {
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
     res.sendFile(path.join(frontendPath, 'index.html'));
   });
 }
 
-app.listen(process.env.PORT, () => {
-  console.log(`Server running on port ${process.env.PORT}`);
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
 });
